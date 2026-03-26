@@ -15,6 +15,14 @@
 
 const crypto = require('crypto');
 
+// ─── Resolved environment variables ──────────────────────────────────────────
+// Each variable accepts two naming schemes so either convention works in Vercel.
+// Primary name is checked first; alternate (French-style) name is the fallback.
+const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || process.env.ID_CLIENT_PAYPAL  || '';
+const PAYPAL_SECRET    = process.env.PAYPAL_SECRET    || process.env.SECRET_PAYPAL     || '';
+const PAYPAL_BASE_URL  = process.env.PAYPAL_BASE_URL  || process.env.URL_BASE_PAYPAL   || 'https://api-m.paypal.com';
+const ALLOWED_ORIGIN   = process.env.ALLOWED_ORIGIN   || process.env.ORIGINE_AUTORIS   || 'https://hoteltiznit.com';
+
 // ─── Authoritative price catalog ─────────────────────────────────────────────
 // Never expose this as a "source of truth" to the client.
 const ROOM_CATALOG = {
@@ -96,29 +104,30 @@ function calculatePrice(room, checkIn, checkOut, guests) {
 // ─── PayPal: obtain OAuth2 access token (server-to-server) ───────────────────
 async function getPayPalAccessToken(base) {
   // Log presence + length of credentials — never log the actual values
-  const clientIdSet = Boolean(process.env.PAYPAL_CLIENT_ID);
-  const secretSet   = Boolean(process.env.PAYPAL_SECRET);
+  const clientIdSet = Boolean(PAYPAL_CLIENT_ID);
+  const secretSet   = Boolean(PAYPAL_SECRET);
 
   console.log(
     '[create-payment] ENV CHECK | ' +
     `PAYPAL_CLIENT_ID=${clientIdSet
-      ? 'SET (length=' + process.env.PAYPAL_CLIENT_ID.length + ')'
-      : '*** MISSING ***'} | ` +
+      ? 'SET (length=' + PAYPAL_CLIENT_ID.length + ')'
+      : '*** MISSING — set PAYPAL_CLIENT_ID or ID_CLIENT_PAYPAL ***'} | ` +
     `PAYPAL_SECRET=${secretSet
-      ? 'SET (length=' + process.env.PAYPAL_SECRET.length + ')'
-      : '*** MISSING ***'}`
+      ? 'SET (length=' + PAYPAL_SECRET.length + ')'
+      : '*** MISSING — set PAYPAL_SECRET or SECRET_PAYPAL ***'}`
   );
 
   if (!clientIdSet || !secretSet) {
     throw new Error(
-      'Missing PayPal credentials — set PAYPAL_CLIENT_ID and PAYPAL_SECRET ' +
+      'Missing PayPal credentials — set PAYPAL_CLIENT_ID (or ID_CLIENT_PAYPAL) ' +
+      'and PAYPAL_SECRET (or SECRET_PAYPAL) ' +
       'in Vercel → Project Settings → Environment Variables.'
     );
   }
 
   const tokenUrl    = `${base}/v1/oauth2/token`;
   const credentials = Buffer.from(
-    `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`
+    `${PAYPAL_CLIENT_ID}:${PAYPAL_SECRET}`
   ).toString('base64');
 
   console.log(`[create-payment] PayPal token request -> ${tokenUrl}`);
@@ -192,8 +201,6 @@ function isRateLimited(ip) {
 // CORS is technically same-origin.  We still set headers explicitly so
 // preview deployments (*.vercel.app) and local dev work without friction.
 function setCorsHeaders(res, origin) {
-  const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || 'https://hoteltiznit.com';
-
   const isAllowed =
     origin === ALLOWED_ORIGIN ||
     origin === 'https://www.' + ALLOWED_ORIGIN.replace('https://', '') ||
@@ -256,12 +263,12 @@ module.exports = async function handler(req, res) {
   }
 
   // Resolve and log the PayPal base URL — makes live vs sandbox immediately obvious
-  const base = process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+  const base = PAYPAL_BASE_URL;
 
   console.log(
     '[create-payment] Invocation start | ' +
     `IP=${clientIP} | room=${room} | checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
-    `PAYPAL_BASE_URL=${base} (${process.env.PAYPAL_BASE_URL ? 'from env' : 'using default — add PAYPAL_BASE_URL to Vercel env vars'})`
+    `PAYPAL_BASE_URL=${base} (${(process.env.PAYPAL_BASE_URL || process.env.URL_BASE_PAYPAL) ? 'from env' : 'using default — set PAYPAL_BASE_URL or URL_BASE_PAYPAL in Vercel'})`
   );
 
   try {

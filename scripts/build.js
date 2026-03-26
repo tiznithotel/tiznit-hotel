@@ -40,13 +40,14 @@ if (fs.existsSync(envPath)) {
     });
 }
 
-// ── Validate PAYPAL_CLIENT_ID ─────────────────────────────────────────────
-const clientId    = (process.env.PAYPAL_CLIENT_ID || '').trim();
+// ── Validate PAYPAL_CLIENT_ID (accepts either naming scheme) ─────────────
+const clientId    = (process.env.PAYPAL_CLIENT_ID || process.env.ID_CLIENT_PAYPAL || '').trim();
 const PLACEHOLDER = '__PAYPAL_CLIENT_ID__';
 
 if (!clientId) {
-  console.error('[build] ❌  PAYPAL_CLIENT_ID is not set.');
-  console.error('[build]     → In Netlify: Site configuration → Environment variables');
+  console.error('[build] ❌  PayPal client-id is not set.');
+  console.error('[build]     → Set either PAYPAL_CLIENT_ID or ID_CLIENT_PAYPAL in Vercel:');
+  console.error('[build]       Project Settings → Environment Variables');
   console.error('[build]     → Locally: export PAYPAL_CLIENT_ID=<live-id>');
   process.exit(1);
 }
@@ -54,7 +55,7 @@ if (!clientId) {
 // Sanity-check: live PayPal client-ids are 80-90 printable chars,
 // contain no whitespace, and must NOT start with "sandbox".
 if (/\s/.test(clientId) || clientId.toLowerCase().includes('sandbox')) {
-  console.error('[build] ❌  PAYPAL_CLIENT_ID looks like a sandbox id or contains whitespace.');
+  console.error('[build] ❌  PAYPAL_CLIENT_ID (or ID_CLIENT_PAYPAL) looks like a sandbox id or contains whitespace.');
   console.error('[build]     Obtain your LIVE client-id from developer.paypal.com → My Apps & Credentials → Live tab.');
   process.exit(1);
 }
