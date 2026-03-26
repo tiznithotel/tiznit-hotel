@@ -1,5 +1,9 @@
 [build]
-  publish = "public"
+  # Stamps PAYPAL_CLIENT_ID (set in Netlify env vars) into public/index.html
+  # before the site is published.  Static HTML cannot read process.env at
+  # runtime — this build step bridges that gap.
+  command   = "node scripts/build.js"
+  publish   = "public"
   functions = "netlify/functions"
 
 # ── Global security headers ──────────────────────────────────────────────────
@@ -31,7 +35,7 @@
       font-src https://fonts.gstatic.com;
       img-src 'self' data: https:;
       connect-src 'self' https://www.paypal.com https://api.paypal.com https://api-m.paypal.com;
-      frame-src https://www.paypal.com;
+      frame-src https://www.paypal.com https://www.google.com;
       form-action 'self';
       base-uri 'self';
       object-src 'none';
