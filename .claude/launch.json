@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Netlify Dev",
+      "description": "Full Netlify environment: serves public/ AND runs serverless functions (/.netlify/functions/*) locally. Required to test PayPal create-payment and verify-payment endpoints.",
+      "runtimeExecutable": "netlify",
+      "runtimeArgs": ["dev", "--dir", "C:\\Users\\DELLPC\\Downloads\\site.definitif\\tiznit-netlify\\public", "--functions", "C:\\Users\\DELLPC\\Downloads\\site.definitif\\tiznit-netlify\\netlify\\functions", "--port", "8888"],
+      "port": 8888
+    },
+    {
+      "name": "live-server (frontend only)",
+      "description": "Serves public/ with live-reload on save. No function support — PayPal buttons will fail. Good for layout and CSS work.",
+      "runtimeExecutable": "live-server",
+      "runtimeArgs": ["C:\\Users\\DELLPC\\Downloads\\site.definitif\\tiznit-netlify\\public", "--port=8080", "--no-browser"],
+      "port": 8080
+    },
+    {
+      "name": "Python HTTP (frontend only)",
+      "description": "Minimal static file server for public/. No live-reload, no functions. Useful as a zero-dependency fallback.",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8000", "--directory", "C:\\Users\\DELLPC\\Downloads\\site.definitif\\tiznit-netlify\\public"],
+      "port": 8000
+    }
+  ]
+}

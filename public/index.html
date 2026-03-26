@@ -755,7 +755,7 @@ function renderPayPal(){
     style:{layout:'vertical',color:'gold',shape:'rect',label:'pay',height:44},
     // Step 1 — server creates PayPal order with server-calculated price
     createOrder:function(){
-      return fetch('/.netlify/functions/create-payment',{
+      return fetch('/api/create-payment',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({room:rt,checkIn:ci,checkOut:co,guests:g})
@@ -783,7 +783,7 @@ function renderPayPal(){
         const email=(document.getElementById('cE').value||'').trim();
         document.getElementById('paypal-button-container').style.display='none';
         document.getElementById('paypal-success').style.display='block';
-        return fetch('/.netlify/functions/verify-payment',{
+        return fetch('/api/verify-payment',{
           method:'POST',
           headers:{'Content-Type':'application/json'},
           body:JSON.stringify({
