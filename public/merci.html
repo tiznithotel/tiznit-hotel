@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Justificatif de réservation — Tiznit Hotel</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Jost',sans-serif;background:#f0e8d8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px}
+.receipt{background:#fff;max-width:560px;width:100%;box-shadow:0 8px 48px rgba(0,0,0,.12)}
+.receipt-header{background:#1c1812;padding:36px 44px 28px;text-align:center;position:relative;overflow:hidden}
+.receipt-header::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#c9a96e,#e8c98a,#c9a96e)}
+.hotel-name{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;color:#faf7f2;letter-spacing:4px;text-transform:uppercase;display:block;margin-bottom:4px}
+.hotel-name span{color:#c9a96e;font-style:italic}
+.hotel-stars{color:#c9a96e;font-size:13px;letter-spacing:6px;display:block;margin-bottom:16px}
+.receipt-title{font-size:11px;letter-spacing:4px;text-transform:uppercase;color:rgba(250,247,242,.5);display:block}
+.res-number-wrap{background:#faf7f2;padding:28px 44px 0;text-align:center}
+.res-label{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:#b5a898;display:block;margin-bottom:10px}
+.res-number{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:400;color:#1c1812;letter-spacing:4px;display:inline-block;padding:14px 28px;border:1px dashed rgba(201,169,110,.5)}
+.confirmed-badge{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 0 0;padding-bottom:24px}
+.check-circle{width:22px;height:22px;background:#2ecc71;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.check-circle svg{width:12px;height:12px}
+.confirmed-text{font-size:13px;color:#2ecc71;letter-spacing:1px}
+.zigzag{height:16px;background:#faf7f2;position:relative;overflow:hidden}
+.zigzag::after{content:'';position:absolute;bottom:0;left:0;right:0;height:16px;background:repeating-linear-gradient(135deg,#fff 0,#fff 8px,transparent 8px,transparent 16px),repeating-linear-gradient(225deg,#fff 0,#fff 8px,transparent 8px,transparent 16px)}
+.receipt-body{background:#fff;padding:28px 44px 0}
+.detail-section{margin-bottom:24px}
+.detail-title{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#c9a96e;margin-bottom:14px;display:block;padding-bottom:8px;border-bottom:1px solid rgba(201,169,110,.2)}
+.detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid #f5f0e8}
+.detail-row:last-child{border-bottom:none}
+.detail-key{font-size:13px;color:#8a7d6b;flex:1}
+.detail-val{font-size:13px;color:#1c1812;font-weight:500;text-align:right;flex:1}
+.total-row{display:flex;justify-content:space-between;align-items:center;padding:18px 44px;background:#1c1812}
+.total-label{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(250,247,242,.5)}
+.total-amount{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:300;color:#e8c98a}
+.total-amount small{font-size:14px;color:rgba(250,247,242,.45);font-family:'Jost',sans-serif;font-weight:300;margin-left:6px}
+.receipt-footer{padding:24px 44px 0;background:#fff}
+.important{font-size:13px;color:#1c1812;background:#faf7f2;padding:14px 18px;border-left:3px solid #c9a96e;margin-bottom:20px;line-height:1.7}
+.receipt-footer p{font-size:12px;color:#b5a898;line-height:1.7;text-align:center;margin-bottom:16px}
+.actions{display:flex;gap:10px;padding:16px 44px 32px}
+.btn-pdf{flex:1;padding:14px;background:#c9a96e;color:#fff;border:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .3s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-pdf:hover{background:#a07840}
+.btn-wa{flex:1;padding:14px;background:#25D366;color:#fff;border:none;font-family:'Jost',sans-serif;font-size:11px;letter-spacing:2px;text-transform:uppercase;cursor:pointer;transition:background .3s;display:flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.btn-wa:hover{background:#20ba58}
+.btn-home{display:block;text-align:center;padding:0 44px 20px;color:#b5a898;font-size:12px;text-decoration:none;transition:color .3s}
+.btn-home:hover{color:#1c1812}
+.issued{text-align:center;font-size:11px;color:#d3ccc4;padding:0 44px 24px;letter-spacing:1px}
+.paypal-id{font-size:11px;color:#b5a898;text-align:center;padding:0 44px 16px;word-break:break-all}
+
+@media print{
+  body{background:#fff;padding:0}
+  .receipt{box-shadow:none;max-width:100%}
+  .actions,.btn-home,.paypal-id,.issued{display:none}
+  @page{margin:10mm}
+}
+</style>
+</head>
+<body>
+<div class="receipt" id="receipt">
+
+  <div class="receipt-header">
+    <span class="hotel-name">Tiznit <span>Hotel</span></span>
+    <span class="hotel-stars">★ ★ ★</span>
+    <span class="receipt-title">Justificatif de réservation</span>
+  </div>
+
+  <div class="res-number-wrap">
+    <span class="res-label">Numéro de réservation</span>
+    <span class="res-number" id="resNum">—</span>
+    <div class="confirmed-badge">
+      <div class="check-circle">
+        <svg viewBox="0 0 12 12" fill="none" stroke="white" stroke-width="2" stroke-linecap="round">
+          <polyline points="2 6 5 9 10 3"/>
+        </svg>
+      </div>
+      <span class="confirmed-text">Paiement PayPal confirmé</span>
+    </div>
+  </div>
+
+  <div class="zigzag"></div>
+
+  <div class="receipt-body">
+    <div class="detail-section">
+      <span class="detail-title">Détails du séjour</span>
+      <div class="detail-row"><span class="detail-key">Client</span><span class="detail-val" id="dName">—</span></div>
+      <div class="detail-row"><span class="detail-key">Chambre</span><span class="detail-val" id="dRoom">—</span></div>
+      <div class="detail-row"><span class="detail-key">Arrivée</span><span class="detail-val" id="dCi">—</span></div>
+      <div class="detail-row"><span class="detail-key">Départ</span><span class="detail-val" id="dCo">—</span></div>
+      <div class="detail-row"><span class="detail-key">Durée</span><span class="detail-val" id="dNights">—</span></div>
+      <div class="detail-row"><span class="detail-key">Personnes</span><span class="detail-val" id="dGuests">—</span></div>
+    </div>
+    <div class="detail-section">
+      <span class="detail-title">Services inclus</span>
+      <div class="detail-row"><span class="detail-key">Petit déjeuner du chef</span><span class="detail-val" style="color:#2ecc71">✓ Inclus</span></div>
+      <div class="detail-row"><span class="detail-key">Climatisation</span><span class="detail-val" style="color:#2ecc71">✓ Inclus</span></div>
+      <div class="detail-row"><span class="detail-key">TV satellite · WiFi</span><span class="detail-val" style="color:#2ecc71">✓ Inclus</span></div>
+      <div class="detail-row"><span class="detail-key">Accès piscine</span><span class="detail-val" style="color:#2ecc71">✓ 8h–19h</span></div>
+    </div>
+  </div>
+
+  <div class="total-row">
+    <span class="total-label">Total payé</span>
+    <span class="total-amount" id="dTotal">— <small>DHS</small></span>
+  </div>
+
+  <div class="receipt-footer">
+    <div class="important">
+      📍 <strong>Tiznit Hotel</strong> — Rue Bir Anzarane, 85000 Tiznit, Maroc<br>
+      📞 +33 7 49 25 14 58 · Réception ouverte 24h/24<br>
+      🕐 Check-in dès 12h00 · Check-out avant 11h00<br>
+      🍳 Petit déjeuner du chef servi chaque matin
+    </div>
+    <p>Présentez ce justificatif à votre arrivée.</p>
+  </div>
+
+  <div class="actions">
+    <button class="btn-pdf" onclick="downloadPDF()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Télécharger PDF
+    </button>
+    <a class="btn-wa" id="waLink" href="#" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      WhatsApp
+    </a>
+  </div>
+
+  <a href="/" class="btn-home">← Retour au site Tiznit Hotel</a>
+  <div class="paypal-id" id="paypalId"></div>
+  <div class="issued" id="issuedDate"></div>
+
+</div>
+
+<script>
+// ── Security: read booking from sessionStorage, never from URL params ─────────
+// URL params are visible in browser history, server logs, and referrer headers.
+// sessionStorage is tab-scoped and cleared when the tab closes.
+(function () {
+  'use strict';
+
+  var raw = sessionStorage.getItem('tiznitBooking');
+  if (!raw) {
+    // No booking session — redirect home rather than show blank/forgeable page
+    window.location.replace('/');
+    return;
+  }
+
+  var b;
+  try { b = JSON.parse(raw); } catch (e) { window.location.replace('/'); return; }
+
+  // Clear immediately — one-time read, prevents back-button replay
+  sessionStorage.removeItem('tiznitBooking');
+
+  // Validate expected shape
+  if (!b || !b.resNb || !b.room) { window.location.replace('/'); return; }
+
+  var res   = String(b.resNb   || 'N/A');
+  var room  = String(b.room    || '—');
+  var ci    = String(b.checkIn || '—');
+  var co    = String(b.checkOut|| '—');
+  var g     = parseInt(b.guests, 10) || 0;
+  var n     = parseInt(b.nights, 10) || 0;
+  var total = String(b.totalMAD|| '—');
+  var ppid  = String(b.paypalId|| '');
+
+  function fmtDate(d) {
+    if (!d || d === '—') return d;
+    var parts = d.split('-');
+    if (parts.length !== 3) return d;
+    var months = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+    return parseInt(parts[2], 10) + ' ' + (months[parseInt(parts[1], 10) - 1] || '') + ' ' + parts[0];
+  }
+
+  // ── Set all values with textContent (never innerHTML) ─────────────────────
+  document.getElementById('resNum').textContent  = res;
+  document.getElementById('dName').textContent   = b.name || '—';  // name stored separately
+  document.getElementById('dRoom').textContent   = room;
+  document.getElementById('dCi').textContent     = fmtDate(ci);
+  document.getElementById('dCo').textContent     = fmtDate(co);
+  document.getElementById('dNights').textContent = n + ' nuit' + (n > 1 ? 's' : '');
+  document.getElementById('dGuests').textContent = g + ' personne' + (g > 1 ? 's' : '');
+
+  // Fix: was innerHTML — replaced with safe DOM construction
+  var totalEl   = document.getElementById('dTotal');
+  totalEl.textContent = '';
+  var totalText = document.createTextNode(total + '\u00a0');
+  var smallEl   = document.createElement('small');
+  smallEl.textContent = 'DHS';
+  totalEl.appendChild(totalText);
+  totalEl.appendChild(smallEl);
+
+  if (ppid) {
+    document.getElementById('paypalId').textContent = 'Référence PayPal : ' + ppid;
+  }
+
+  var msg = 'Bonjour, j\'ai une réservation confirmée au Tiznit Hotel.\nN° : ' + res +
+            '\nChambre : ' + room +
+            '\nArrivée : ' + fmtDate(ci) + ' · Départ : ' + fmtDate(co) +
+            '\nPersonnes : ' + g;
+  document.getElementById('waLink').href =
+    'https://wa.me/33749251458?text=' + encodeURIComponent(msg);
+
+  var now = new Date();
+  document.getElementById('issuedDate').textContent =
+    'Justificatif émis le ' + now.getDate() + '/' + (now.getMonth() + 1) + '/' +
+    now.getFullYear() + ' à ' +
+    String(now.getHours()).padStart(2, '0') + ':' +
+    String(now.getMinutes()).padStart(2, '0');
+
+  document.title = 'Réservation ' + res + ' — Tiznit Hotel';
+}());
+
+function downloadPDF() {
+  window.print();
+}
+</script>
+</body>
+</html>

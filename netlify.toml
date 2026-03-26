@@ -1,0 +1,54 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+# ── Global security headers ──────────────────────────────────────────────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Clickjacking protection
+    X-Frame-Options = "DENY"
+
+    # Prevent MIME sniffing
+    X-Content-Type-Options = "nosniff"
+
+    # Minimal referrer leakage
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Disable dangerous browser features
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), usb=(), payment=(self)"
+
+    # Force HTTPS for 1 year (enable after confirming HTTPS works)
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+
+    # Content Security Policy
+    # NOTE: 'unsafe-inline' on script-src is required while JS lives in HTML.
+    # To remove it: move all <script> blocks to external .js files.
+    Content-Security-Policy = """
+      default-src 'none';
+      script-src 'self' 'unsafe-inline' https://www.paypal.com https://www.paypalobjects.com https://www.sandbox.paypal.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src https://fonts.gstatic.com;
+      img-src 'self' data: https:;
+      connect-src 'self' https://www.paypal.com https://api.paypal.com https://api-m.paypal.com https://www.sandbox.paypal.com;
+      frame-src https://www.paypal.com https://www.sandbox.paypal.com;
+      form-action 'self';
+      base-uri 'self';
+      object-src 'none';
+    """
+
+    # Legacy XSS filter (IE/old Edge)
+    X-XSS-Protection = "1; mode=block"
+
+# ── No caching for API functions ─────────────────────────────────────────────
+[[headers]]
+  for = "/.netlify/functions/*"
+  [headers.values]
+    Cache-Control = "no-store, no-cache, must-revalidate, proxy-revalidate"
+    Pragma = "no-cache"
+
+# ── No caching for merci.html (reads sessionStorage) ─────────────────────────
+[[headers]]
+  for = "/merci.html"
+  [headers.values]
+    Cache-Control = "no-store"

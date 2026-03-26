@@ -1,0 +1,12 @@
+{
+  "name": "tiznit-hotel",
+  "version": "2.0.0",
+  "description": "Tiznit Hotel booking system — hardened secure backend",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-fetch": "^2.7.0",
+    "stripe": "^14.0.0"
+  }
+}
