@@ -90,14 +90,39 @@ function calculatePrice(room, checkIn, checkOut, guests) {
   return { totalMAD, totalEUR, nights };
 }
 
-// ─── PayPal server-to-server helpers ─────────────────────────────────────────
-async function getPayPalAccessToken() {
-  const base        = process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+// ─── PayPal: obtain access token ─────────────────────────────────────────────
+async function getPayPalAccessToken(base) {
+
+  // ── REQ 3: Confirm env vars are present before using them ────────────────
+  // Log presence and key length (never the actual value)
+  const clientIdSet = Boolean(process.env.PAYPAL_CLIENT_ID);
+  const secretSet   = Boolean(process.env.PAYPAL_SECRET);
+  console.log(
+    `[create-payment] ENV CHECK | ` +
+    `PAYPAL_CLIENT_ID=${clientIdSet
+      ? `SET (length=${process.env.PAYPAL_CLIENT_ID.length})`
+      : '*** MISSING ***'} | ` +
+    `PAYPAL_SECRET=${secretSet
+      ? `SET (length=${process.env.PAYPAL_SECRET.length})`
+      : '*** MISSING ***'}`
+  );
+
+  if (!clientIdSet || !secretSet) {
+    throw new Error(
+      'Missing PayPal credentials — set PAYPAL_CLIENT_ID and PAYPAL_SECRET ' +
+      'in Netlify → Site configuration → Environment variables.'
+    );
+  }
+
+  // ── REQ 4: Log the exact URL being called so live vs sandbox is obvious ──
+  const tokenUrl = `${base}/v1/oauth2/token`;
+  console.log(`[create-payment] PayPal token request → ${tokenUrl}`);
+
   const credentials = Buffer.from(
     `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`
   ).toString('base64');
 
-  const res = await fetch(`${base}/v1/oauth2/token`, {
+  const res = await fetch(tokenUrl, {
     method:  'POST',
     headers: {
       Authorization:  `Basic ${credentials}`,
@@ -106,13 +131,38 @@ async function getPayPalAccessToken() {
     body: 'grant_type=client_credentials',
   });
 
+  // ── REQ 2 + 5: Log every PayPal token error in full ──────────────────────
   if (!res.ok) {
-    const err = await res.text();
-    console.error('PayPal token error:', err);
-    throw new Error('PayPal authentication failed.');
+    let errPayload;
+    try   { errPayload = await res.json(); }
+    catch { errPayload = { raw: await res.text() }; }
+
+    console.error(
+      `[create-payment] ❌ PayPal TOKEN failed | ` +
+      `HTTP ${res.status} ${res.statusText} | ` +
+      `url=${tokenUrl} | ` +
+      `paypal_error=${JSON.stringify(errPayload)}`
+    );
+
+    // Carry the full PayPal error forward so the outer catch can log it too
+    const err = new Error(
+      `PayPal token request failed (HTTP ${res.status}): ${JSON.stringify(errPayload)}`
+    );
+    err.paypalStatus  = res.status;
+    err.paypalPayload = errPayload;
+    throw err;
   }
 
   const data = await res.json();
+
+  // ── REQ 1: Confirm token obtained — log scope and lifetime, never the token ─
+  console.log(
+    `[create-payment] ✅ PayPal token obtained | ` +
+    `token_type=${data.token_type} | ` +
+    `expires_in=${data.expires_in}s | ` +
+    `scope="${data.scope}"`
+  );
+
   return data.access_token;
 }
 
@@ -141,7 +191,6 @@ function isRateLimited(ip) {
 function corsHeaders(event) {
   const allowed = process.env.ALLOWED_ORIGIN || '';
   const origin  = event.headers['origin'] || '';
-  // Allow the configured origin, or any Netlify preview URL for this site.
   const isAllowed =
     (allowed && origin === allowed) ||
     /^https:\/\/[a-z0-9-]+\.netlify\.app$/.test(origin);
@@ -176,7 +225,7 @@ exports.handler = async (event) => {
     (event.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
 
   if (isRateLimited(clientIP)) {
-    console.warn(`Rate limit hit: ${clientIP}`);
+    console.warn(`[create-payment] Rate limit hit | IP=${clientIP}`);
     return {
       statusCode: 429,
       headers: { ...headers, 'Retry-After': '60' },
@@ -208,62 +257,113 @@ exports.handler = async (event) => {
     };
   }
 
+  // ── REQ 4: Resolve and log the base URL once — visible in every invocation ──
+  const base = process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+  console.log(
+    `[create-payment] ▶ invocation start | ` +
+    `IP=${clientIP} | room=${room} | checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
+    `PAYPAL_BASE_URL=${base} (${process.env.PAYPAL_BASE_URL ? 'from env' : 'using default'})`
+  );
+
   try {
     const { totalMAD, totalEUR, nights } = calculatePrice(
       room, checkIn, checkOut, guests
     );
 
-    const token = await getPayPalAccessToken();
-    const base  = process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+    console.log(
+      `[create-payment] Price computed | room=${room} | nights=${nights} | ` +
+      `totalMAD=${totalMAD} | totalEUR=${totalEUR}`
+    );
+
+    // Pass base into getPayPalAccessToken so it uses the same URL
+    const token = await getPayPalAccessToken(base);
 
     // Idempotency key — prevents duplicate orders on retries
     const idempotencyKey = crypto.randomUUID();
+    const orderUrl       = `${base}/v2/checkout/orders`;
 
-    const orderRes = await fetch(`${base}/v2/checkout/orders`, {
+    // Build the order payload
+    const orderPayload = {
+      intent: 'CAPTURE',
+      purchase_units: [
+        {
+          description: `Tiznit Hotel — ${ROOM_CATALOG[room].name} — ${nights} nuit(s) — ${checkIn} au ${checkOut}`,
+          amount: {
+            currency_code: 'EUR',
+            value:         totalEUR,   // amount set by server, not client
+          },
+          // Stash booking params for cross-verification in verify-payment
+          custom_id: JSON.stringify({
+            room,
+            checkIn,
+            checkOut,
+            guests:   String(guests),
+            totalMAD: String(totalMAD),
+          }),
+        },
+      ],
+      application_context: {
+        brand_name:          'Tiznit Hotel',
+        landing_page:        'NO_PREFERENCE',
+        user_action:         'PAY_NOW',
+        shipping_preference: 'NO_SHIPPING',
+      },
+    };
+
+    // ── REQ 1 + 4: Log the full request being sent to PayPal ─────────────
+    console.log(
+      `[create-payment] PayPal order request → ${orderUrl} | ` +
+      `idempotency_key=${idempotencyKey} | ` +
+      `payload=${JSON.stringify(orderPayload)}`
+    );
+
+    const orderRes = await fetch(orderUrl, {
       method:  'POST',
       headers: {
         Authorization:       `Bearer ${token}`,
         'Content-Type':      'application/json',
         'PayPal-Request-Id': idempotencyKey,
       },
-      body: JSON.stringify({
-        intent: 'CAPTURE',
-        purchase_units: [
-          {
-            description: `Tiznit Hotel — ${ROOM_CATALOG[room].name} — ${nights} nuit(s) — ${checkIn} au ${checkOut}`,
-            amount: {
-              currency_code: 'EUR',
-              value:         totalEUR,   // amount set by server, not client
-            },
-            // Stash booking params for cross-verification in verify-payment
-            custom_id: JSON.stringify({
-              room,
-              checkIn,
-              checkOut,
-              guests: String(guests),
-              totalMAD: String(totalMAD),
-            }),
-          },
-        ],
-        application_context: {
-          brand_name:          'Tiznit Hotel',
-          landing_page:        'NO_PREFERENCE',
-          user_action:         'PAY_NOW',
-          shipping_preference: 'NO_SHIPPING',
-        },
-      }),
+      body: JSON.stringify(orderPayload),
     });
 
+    // ── REQ 2 + 5: On failure log the complete PayPal error payload ───────
     if (!orderRes.ok) {
-      const errBody = await orderRes.json().catch(() => ({}));
-      console.error('PayPal order creation failed:', JSON.stringify(errBody));
-      throw new Error("Impossible de créer l'ordre PayPal.");
+      let errBody;
+      try   { errBody = await orderRes.json(); }
+      catch { errBody = { raw: await orderRes.text() }; }
+
+      console.error(
+        `[create-payment] ❌ PayPal ORDER creation failed | ` +
+        `HTTP ${orderRes.status} ${orderRes.statusText} | ` +
+        `url=${orderUrl} | ` +
+        `paypal_error_name=${errBody.name || 'n/a'} | ` +
+        `paypal_error_message=${errBody.message || 'n/a'} | ` +
+        `paypal_error_details=${JSON.stringify(errBody.details || [])} | ` +
+        `full_response=${JSON.stringify(errBody)}`
+      );
+
+      // Attach full PayPal payload to the thrown error so the catch block
+      // can log it again if needed — nothing is lost
+      const err = new Error(
+        `PayPal order creation failed (HTTP ${orderRes.status}): ` +
+        `${errBody.name || ''} — ${errBody.message || JSON.stringify(errBody)}`
+      );
+      err.paypalStatus  = orderRes.status;
+      err.paypalPayload = errBody;
+      throw err;
     }
 
+    // ── REQ 1: Log the full successful PayPal order response ─────────────
     const order = await orderRes.json();
-
     console.log(
-      `Order created: ${order.id} | room=${room} | nights=${nights} | EUR=${totalEUR} | IP=${clientIP}`
+      `[create-payment] ✅ PayPal order CREATED | ` +
+      `id=${order.id} | ` +
+      `status=${order.status} | ` +
+      `intent=${order.intent} | ` +
+      `currency=${order.purchase_units?.[0]?.amount?.currency_code} | ` +
+      `value=${order.purchase_units?.[0]?.amount?.value} | ` +
+      `links=${JSON.stringify((order.links || []).map(l => `${l.rel}:${l.href}`))}`
     );
 
     return {
@@ -276,12 +376,34 @@ exports.handler = async (event) => {
         nights,
       }),
     };
+
   } catch (err) {
-    console.error('create-payment error:', err.message);
+    // ── Surface the full error in the function logs ───────────────────────
+    // PayPal errors carry .paypalStatus and .paypalPayload (attached above).
+    // Config / JS errors carry .stack only.
+    console.error(
+      `[create-payment] ❌ FATAL | ` +
+      `message=${err.message} | ` +
+      `paypalStatus=${err.paypalStatus || 'n/a'} | ` +
+      `paypalPayload=${err.paypalPayload ? JSON.stringify(err.paypalPayload) : 'n/a'} | ` +
+      `stack=${err.stack || 'n/a'}`
+    );
+
+    // ── Return a clear, structured JSON error instead of a generic message ─
+    // PayPal API errors  → 502 + the exact PayPal error object
+    // Config/credential  → 500 + the actionable message
+    // Unexpected JS error→ 500 + err.message (never a blank "internal error")
+    const statusCode = err.paypalStatus ? 502 : 500;
+    const body = {
+      error: err.message,
+      ...(err.paypalStatus  && { paypalHttpStatus: err.paypalStatus }),
+      ...(err.paypalPayload && { paypalError:      err.paypalPayload }),
+    };
+
     return {
-      statusCode: 500,
+      statusCode,
       headers,
-      body: JSON.stringify({ error: 'Erreur interne. Veuillez réessayer.' }),
+      body: JSON.stringify(body),
     };
   }
 };
