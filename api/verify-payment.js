@@ -23,7 +23,8 @@
 const crypto = require('crypto');
 
 // ─── PayPal environment selection ─────────────────────────────────────────────
-const IS_SANDBOX = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox';
+const IS_SANDBOX   = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox';
+const IS_TEST_MODE = (process.env.TEST_PAYMENT_MODE || '').toLowerCase() === 'true';
 
 const PAYPAL_CLIENT_ID = IS_SANDBOX
   ? (process.env.PAYPAL_SANDBOX_CLIENT_ID || '')
@@ -69,6 +70,14 @@ function buildRoomLabel(rooms) {
     .filter(r => r.qty > 0)
     .map(r => `${r.qty} ${r.qty > 1 ? ROOM_CATALOG[r.type].name.replace('Chambre ', 'Chambres ') + 's' : ROOM_CATALOG[r.type].name}`)
     .join(' + ');
+}
+
+// ─── Parse rooms array from frontend data (test mode only) ───────────────────
+function parseRooms(rawRooms) {
+  if (!Array.isArray(rawRooms)) return [];
+  return rawRooms
+    .filter(r => r && ROOM_CATALOG[r.type] && parseInt(r.qty, 10) > 0)
+    .map(r => ({ type: r.type, qty: parseInt(r.qty, 10) }));
 }
 
 // ─── Parse custom_id stored by create-payment (authoritative booking data) ───
@@ -385,6 +394,62 @@ module.exports = async function handler(req, res) {
     `checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
     `base_url=${base}`
   );
+
+  // ── Test mode bypass (TEST_PAYMENT_MODE=true + TEST- order prefix) ──────────
+  if (IS_TEST_MODE && typeof orderID === 'string' && orderID.startsWith('TEST-')) {
+    console.log(`[verify-payment] TEST MODE | orderID=${orderID} | IP=${clientIP}`);
+
+    const testRooms = parseRooms(body.rooms);
+    const ci = String(body.checkIn || '');
+    const co = String(body.checkOut || '');
+    const g  = parseInt(body.guests, 10) || 1;
+
+    if (testRooms.length === 0 || !ci || !co) {
+      return res.status(422).json({ error: 'Données test invalides (rooms/dates manquants).' });
+    }
+
+    const now      = new Date();
+    const datePart = String(now.getFullYear()).slice(-2) +
+                     String(now.getMonth() + 1).padStart(2, '0') +
+                     String(now.getDate()).padStart(2, '0');
+    const resNb    = `TH-${datePart}-TEST-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+
+    const totalMAD  = computeTotalMAD(testRooms, ci, co, g);
+    const totalEUR  = (totalMAD * MAD_TO_EUR).toFixed(2);
+    const nights    = Math.round((new Date(co) - new Date(ci)) / 86400000);
+    const roomLabel = buildRoomLabel(testRooms);
+    const safeName  = esc(name  || 'Client Test', 120);
+    const safeEmail = email ? esc(email, 254) : '';
+
+    await sendConfirmationEmail({
+      resNb,
+      name:     safeName,
+      email:    safeEmail,
+      room:     roomLabel,
+      checkIn:  ci,
+      checkOut: co,
+      guests:   g,
+      nights,
+      totalMAD,
+      totalEUR,
+      paypalId: orderID + ' [TEST]',
+    });
+
+    console.log(`[verify-payment] TEST booking confirmed | resNb=${resNb} | rooms=${roomLabel} | nights=${nights}`);
+
+    return res.status(200).json({
+      success:  true,
+      resNb,
+      room:     roomLabel,
+      checkIn:  ci,
+      checkOut: co,
+      guests:   g,
+      nights,
+      totalMAD,
+      totalEUR,
+      paypalId: orderID + ' [TEST]',
+    });
+  }
 
   // Early validation (UX only — authoritative data comes from custom_id below)
   const errors = validateInput({ orderID, checkIn, checkOut, guests, name, email });

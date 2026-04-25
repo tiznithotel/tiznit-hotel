@@ -1183,6 +1183,12 @@ function renderPayPal(){
   if(n<1) return;
   var _c=getCounters();
   if(_c.single+_c.double+_c.triple<1) return;
+  // Test mode: show fake button, bypass PayPal entirely
+  if(typeof PAYMENT_TEST_MODE!=='undefined'&&PAYMENT_TEST_MODE===true){
+    container.innerHTML='<div style="background:#fff3cd;border:2px solid #ffc107;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#856404;font-weight:700;text-align:center;">⚠️ MODE TEST — aucun paiement réel</div><button onclick="simulateTestPayment()" style="width:100%;padding:14px;background:#ffc107;color:#212529;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.3px;">🧪 Simuler un paiement (TEST)</button>';
+    ppRendered=true;
+    return;
+  }
   // Build rooms array — server validates types, qty, capacity
   var rooms=[
     {type:'single',qty:_c.single},
@@ -1258,6 +1264,45 @@ function renderPayPal(){
   ppRendered=true;
 }
 
+// TEST PAYMENT — simulates a successful booking without PayPal
+function simulateTestPayment(){
+  var name=(document.getElementById('cN').value||'').trim()||'Client Test';
+  var email=(document.getElementById('cE').value||'').trim();
+  var comment=(document.getElementById('com')||{value:''}).value||'';
+  var ci=document.getElementById('ci').value;
+  var co=document.getElementById('co').value;
+  var g=parseInt(document.getElementById('mg').value)||1;
+  var _c=getCounters();
+  var rooms=[
+    {type:'single',qty:_c.single},
+    {type:'double',qty:_c.double},
+    {type:'triple',qty:_c.triple}
+  ].filter(function(r){return r.qty>0;});
+  var testOrderId='TEST-'+Date.now().toString(36).toUpperCase();
+  document.getElementById('paypal-button-container').style.display='none';
+  document.getElementById('paypal-success').style.display='block';
+  fetch('/api/verify-payment',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({orderID:testOrderId,name:name,email:email,comment:comment,rooms:rooms,checkIn:ci,checkOut:co,guests:g})
+  })
+  .then(function(r){
+    if(!r.ok) return r.json().then(function(e){throw new Error(e.error||'Erreur serveur');});
+    return r.json();
+  })
+  .then(function(booking){
+    if(!booking.success) throw new Error('Réservation non confirmée.');
+    booking.name=name;
+    sessionStorage.setItem('tiznitBooking',JSON.stringify(booking));
+    setTimeout(function(){window.location.href='/merci.html';},1200);
+  })
+  .catch(function(err){
+    document.getElementById('paypal-button-container').style.display='block';
+    document.getElementById('paypal-success').style.display='none';
+    alert('Erreur test: '+err.message);
+  });
+}
+
 // WHATSAPP
 function swa(){
   var c=getCounters();
@@ -1303,5 +1348,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){cm();clb()}});
      the charge regardless of what client-id is used.
 
      To rotate: update PAYPAL_CLIENT_ID in Netlify env vars → redeploy.     -->
+<script>var PAYMENT_TEST_MODE=__TEST_PAYMENT_MODE__;</script>
+<script>if(PAYMENT_TEST_MODE){document.addEventListener('DOMContentLoaded',function(){/* renderPayPal() called by nextStep() */});}</script>
 <script src="https://www.paypal.com/sdk/js?client-id=__PAYPAL_CLIENT_ID__&currency=EUR&locale=fr_FR&disable-funding=credit,card" onload="renderPayPal()"></script></body>
 </html>

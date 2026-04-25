@@ -40,12 +40,53 @@ if (fs.existsSync(envPath)) {
     });
 }
 
-// ── Sandbox vs Live selection ─────────────────────────────────────────────
-const PAYPAL_ENV = (process.env.PAYPAL_ENV || 'live').toLowerCase();
-const isSandbox  = PAYPAL_ENV === 'sandbox';
-const PLACEHOLDER = '__PAYPAL_CLIENT_ID__';
+// ── Mode detection ────────────────────────────────────────────────────────
+const PAYPAL_ENV   = (process.env.PAYPAL_ENV || 'live').toLowerCase();
+const isSandbox    = PAYPAL_ENV === 'sandbox';
+const IS_TEST_MODE = (process.env.TEST_PAYMENT_MODE || '').toLowerCase() === 'true';
+const PLACEHOLDER      = '__PAYPAL_CLIENT_ID__';
+const TEST_PLACEHOLDER = '__TEST_PAYMENT_MODE__';
 
-console.log('[build] 🌍  PayPal env : ' + (isSandbox ? 'SANDBOX' : 'LIVE'));
+console.log('[build] 🌍  PayPal env   : ' + (isSandbox ? 'SANDBOX' : 'LIVE'));
+if (IS_TEST_MODE) {
+  console.log('[build] ⚠️   TEST_PAYMENT_MODE=true — fake button active, no real PayPal.');
+  console.log('[build]     DO NOT use this in production.');
+}
+
+// ── Read index.html ───────────────────────────────────────────────────────
+const htmlPath = path.join(__dirname, '..', 'public', 'index.html');
+
+if (!fs.existsSync(htmlPath)) {
+  console.error('[build] ❌  public/index.html not found at: ' + htmlPath);
+  process.exit(1);
+}
+
+let html = fs.readFileSync(htmlPath, 'utf8');
+
+// ── Inject TEST_PAYMENT_MODE ──────────────────────────────────────────────
+if (html.includes(TEST_PLACEHOLDER)) {
+  html = html.replace(TEST_PLACEHOLDER, IS_TEST_MODE ? 'true' : 'false');
+  console.log('[build] ✅  TEST_PAYMENT_MODE injected : ' + (IS_TEST_MODE ? 'true' : 'false'));
+} else {
+  console.warn('[build] ⚠️   Placeholder ' + TEST_PLACEHOLDER + ' not found — already injected?');
+}
+
+// ── In test mode: inject dummy client-id (PayPal SDK not used) ────────────
+if (IS_TEST_MODE) {
+  if (html.includes(PLACEHOLDER)) {
+    html = html.replace(PLACEHOLDER, 'test-mode-disabled');
+  }
+  fs.writeFileSync(htmlPath, html, 'utf8');
+  console.log('[build] ✅  Test mode build complete — dummy client-id set.');
+  process.exit(0);
+}
+
+// ── Normal mode: validate and inject real PayPal client-id ────────────────
+if (!html.includes(PLACEHOLDER)) {
+  console.warn('[build] ⚠️   Placeholder ' + PLACEHOLDER + ' not found — already injected?');
+  console.warn('[build]     Skipping injection. Verify the deployed index.html manually.');
+  process.exit(0);
+}
 
 let clientId;
 if (isSandbox) {
@@ -76,23 +117,6 @@ if (isSandbox) {
     console.error('[build]     Use developer.paypal.com → My Apps → Live tab.');
     process.exit(1);
   }
-}
-
-// ── Read index.html ───────────────────────────────────────────────────────
-const htmlPath = path.join(__dirname, '..', 'public', 'index.html');
-
-if (!fs.existsSync(htmlPath)) {
-  console.error('[build] ❌  public/index.html not found at: ' + htmlPath);
-  process.exit(1);
-}
-
-let html = fs.readFileSync(htmlPath, 'utf8');
-
-if (!html.includes(PLACEHOLDER)) {
-  // Already replaced (e.g. Netlify re-runs the build without a clean checkout).
-  console.warn('[build] ⚠️   Placeholder ' + PLACEHOLDER + ' not found — already injected?');
-  console.warn('[build]     Skipping injection. Verify the deployed index.html manually.');
-  process.exit(0);
 }
 
 // ── Inject ────────────────────────────────────────────────────────────────
