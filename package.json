@@ -1,12 +1,13 @@
 {
-  "name": "tiznit-hotel",
+  "name": "tiznit-hotel-site-public",
   "version": "2.0.0",
-  "description": "Tiznit Hotel booking system - Vercel deployment",
+  "description": "Site vitrine public Tiznit Hotel - Netlify",
+  "private": true,
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "build": "node -e \"console.log('static site ready')\""
+    "build": "node scripts/build.js"
   },
   "dependencies": {}
 }

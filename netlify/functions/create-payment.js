@@ -1,10 +1,12 @@
 /**
  * POST /.netlify/functions/create-payment
  *
- * Accepts booking parameters, validates them server-side, calculates the
- * authoritative price, then creates a PayPal order via the server-to-server
- * Orders API.  Returns { orderID, totalMAD, totalEUR, nights } to the
- * browser.  The browser never sets the amount — the server does.
+ * Accepts booking parameters (multi-room model), validates server-side,
+ * calculates the authoritative price, then creates a PayPal order.
+ * Returns { orderID, totalMAD, totalEUR, nights } — the browser never sets the amount.
+ *
+ * Backward compat: if `rooms` is absent but `room` (string) is present,
+ * auto-converts to rooms:[{type:room, qty:1}].
  */
 
 'use strict';
@@ -13,27 +15,62 @@ const fetch = (...args) =>
   import('node-fetch').then(({ default: f }) => f(...args));
 const crypto = require('crypto');
 
-// ─── Authoritative price catalog (never sent to the client as a source of truth) ──
+// ─── Authoritative price catalog ─────────────────────────────────────────────
+// capacity = max guests per room unit  →  Single:1 / Double:2 / Triple:3
 const ROOM_CATALOG = {
-  single: { name: 'Chambre Single', priceMAD: 247, maxGuests: 2 },
-  double: { name: 'Chambre Double', priceMAD: 310, maxGuests: 3 },
-  triple: { name: 'Chambre Triple', priceMAD: 438, maxGuests: 4 },
+  single: { name: 'Chambre Single', priceMAD: 247, capacity: 1 },
+  double: { name: 'Chambre Double', priceMAD: 310, capacity: 2 },
+  triple: { name: 'Chambre Triple', priceMAD: 438, capacity: 3 },
 };
 const BREAKFAST_PER_PERSON_PER_NIGHT = 36;
 const TAX_PER_PERSON_PER_NIGHT       = 10;
 const DISCOUNT_THRESHOLD_NIGHTS      = 5;
 const DISCOUNT_RATE                  = 0.20;
 const MAD_TO_EUR                     = 0.093;
+const MAX_GUESTS                     = 20;
 const MAX_STAY_NIGHTS                = 90;
 
+// ─── Backward compat: room (string) → rooms (array) ──────────────────────────
+function normaliseRooms(rawRooms, legacyRoom) {
+  if (Array.isArray(rawRooms) && rawRooms.length > 0) return rawRooms;
+  if (typeof legacyRoom === 'string' && ROOM_CATALOG[legacyRoom]) {
+    return [{ type: legacyRoom, qty: 1 }];
+  }
+  return rawRooms; // let validation catch it
+}
+
+// ─── Rooms parser & validator ─────────────────────────────────────────────────
+function parseRooms(raw) {
+  const errors = [];
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { valid: false, rooms: [], errors: ['Au moins une chambre est requise.'] };
+  }
+  const validTypes = Object.keys(ROOM_CATALOG);
+  const rooms = [];
+  for (const r of raw) {
+    if (!r || !validTypes.includes(r.type)) {
+      errors.push(`Type de chambre invalide : "${r && r.type}".`);
+      continue;
+    }
+    const qty = parseInt(r.qty, 10);
+    if (!Number.isInteger(qty) || qty < 0) {
+      errors.push(`Quantité invalide pour ${r.type}.`);
+      continue;
+    }
+    rooms.push({ type: r.type, qty });
+  }
+  const totalRooms = rooms.reduce((s, r) => s + r.qty, 0);
+  if (errors.length === 0 && totalRooms === 0) {
+    errors.push('Au moins une chambre est requise.');
+  }
+  return { valid: errors.length === 0, rooms, errors };
+}
+
 // ─── Input validation ─────────────────────────────────────────────────────────
-function validateInput({ room, checkIn, checkOut, guests }) {
+function validateInput({ rooms: rawRooms, checkIn, checkOut, guests }) {
   const errors = [];
 
-  if (!room || !ROOM_CATALOG[room]) {
-    errors.push('Type de chambre invalide.');
-  }
-
+  // Dates
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const ci = new Date(checkIn);
@@ -47,37 +84,45 @@ function validateInput({ room, checkIn, checkOut, guests }) {
   }
 
   if (errors.length === 0) {
-    if (ci < today) {
-      errors.push("La date d'arrivée ne peut pas être dans le passé.");
-    }
-    if (co <= ci) {
-      errors.push("La date de départ doit être après l'arrivée.");
-    }
+    if (ci < today)  errors.push("La date d'arrivée ne peut pas être dans le passé.");
+    if (co <= ci)    errors.push("La date de départ doit être après l'arrivée.");
     const nights = Math.round((co - ci) / 86400000);
-    if (nights > MAX_STAY_NIGHTS) {
-      errors.push(`Séjour maximum : ${MAX_STAY_NIGHTS} nuits.`);
-    }
+    if (nights > MAX_STAY_NIGHTS) errors.push(`Séjour maximum : ${MAX_STAY_NIGHTS} nuits.`);
   }
 
+  // Guests
   const g = parseInt(guests, 10);
-  if (!Number.isInteger(g) || g < 1 || g > 4) {
-    errors.push('Nombre de voyageurs invalide (1–4).');
-  } else if (room && ROOM_CATALOG[room] && g > ROOM_CATALOG[room].maxGuests) {
-    errors.push(
-      `Capacité maximale pour cette chambre : ${ROOM_CATALOG[room].maxGuests} personnes.`
+  if (!Number.isInteger(g) || g < 1 || g > MAX_GUESTS) {
+    errors.push(`Nombre de voyageurs invalide (1–${MAX_GUESTS}).`);
+  }
+
+  // Rooms
+  const { valid: roomsValid, rooms: parsedRooms, errors: roomErrors } = parseRooms(rawRooms);
+  errors.push(...roomErrors);
+
+  // Capacity check (only when both rooms and guests are individually valid)
+  if (roomsValid && Number.isInteger(g) && g >= 1) {
+    const capacity = parsedRooms.reduce(
+      (sum, r) => sum + (ROOM_CATALOG[r.type]?.capacity ?? 0) * r.qty, 0
     );
+    if (g > capacity) {
+      errors.push(
+        `Capacité insuffisante : ${capacity} place(s) disponible(s) pour ${g} personne(s).`
+      );
+    }
   }
 
   return errors;
 }
 
 // ─── Price engine (single source of truth) ───────────────────────────────────
-function calculatePrice(room, checkIn, checkOut, guests) {
-  const r      = ROOM_CATALOG[room];
+function calculatePrice(rooms, checkIn, checkOut, guests) {
   const nights = Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000);
   const g      = parseInt(guests, 10);
 
-  const roomCost  = r.priceMAD * nights;
+  const roomCost  = rooms.reduce(
+    (sum, r) => sum + ROOM_CATALOG[r.type].priceMAD * r.qty * nights, 0
+  );
   const breakfast = BREAKFAST_PER_PERSON_PER_NIGHT * g * nights;
   const tax       = TAX_PER_PERSON_PER_NIGHT * g * nights;
   let   totalMAD  = roomCost + breakfast + tax;
@@ -90,23 +135,26 @@ function calculatePrice(room, checkIn, checkOut, guests) {
   return { totalMAD, totalEUR, nights };
 }
 
+// ─── Human-readable room label ────────────────────────────────────────────────
+function buildRoomLabel(rooms) {
+  return rooms
+    .filter(r => r.qty > 0)
+    .map(r => {
+      const base = ROOM_CATALOG[r.type].name;
+      return `${r.qty} ${r.qty > 1 ? base.replace('Chambre ', 'Chambres ') + 's' : base}`;
+    })
+    .join(' + ');
+}
+
 // ─── PayPal: obtain access token ─────────────────────────────────────────────
 async function getPayPalAccessToken(base) {
-
-  // ── REQ 3: Confirm env vars are present before using them ────────────────
-  // Log presence and key length (never the actual value)
   const clientIdSet = Boolean(process.env.PAYPAL_CLIENT_ID);
   const secretSet   = Boolean(process.env.PAYPAL_SECRET);
   console.log(
     `[create-payment] ENV CHECK | ` +
-    `PAYPAL_CLIENT_ID=${clientIdSet
-      ? `SET (length=${process.env.PAYPAL_CLIENT_ID.length})`
-      : '*** MISSING ***'} | ` +
-    `PAYPAL_SECRET=${secretSet
-      ? `SET (length=${process.env.PAYPAL_SECRET.length})`
-      : '*** MISSING ***'}`
+    `PAYPAL_CLIENT_ID=${clientIdSet ? `SET (length=${process.env.PAYPAL_CLIENT_ID.length})` : '*** MISSING ***'} | ` +
+    `PAYPAL_SECRET=${secretSet ? `SET (length=${process.env.PAYPAL_SECRET.length})` : '*** MISSING ***'}`
   );
-
   if (!clientIdSet || !secretSet) {
     throw new Error(
       'Missing PayPal credentials — set PAYPAL_CLIENT_ID and PAYPAL_SECRET ' +
@@ -114,13 +162,12 @@ async function getPayPalAccessToken(base) {
     );
   }
 
-  // ── REQ 4: Log the exact URL being called so live vs sandbox is obvious ──
-  const tokenUrl = `${base}/v1/oauth2/token`;
-  console.log(`[create-payment] PayPal token request → ${tokenUrl}`);
-
+  const tokenUrl    = `${base}/v1/oauth2/token`;
   const credentials = Buffer.from(
     `${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`
   ).toString('base64');
+
+  console.log(`[create-payment] PayPal token request → ${tokenUrl}`);
 
   const res = await fetch(tokenUrl, {
     method:  'POST',
@@ -131,70 +178,45 @@ async function getPayPalAccessToken(base) {
     body: 'grant_type=client_credentials',
   });
 
-  // ── REQ 2 + 5: Log every PayPal token error in full ──────────────────────
   if (!res.ok) {
     let errPayload;
     try   { errPayload = await res.json(); }
     catch { errPayload = { raw: await res.text() }; }
-
     console.error(
-      `[create-payment] ❌ PayPal TOKEN failed | ` +
-      `HTTP ${res.status} ${res.statusText} | ` +
-      `url=${tokenUrl} | ` +
+      `[create-payment] ❌ PayPal TOKEN failed | HTTP ${res.status} | ` +
       `paypal_error=${JSON.stringify(errPayload)}`
     );
-
-    // Carry the full PayPal error forward so the outer catch can log it too
-    const err = new Error(
-      `PayPal token request failed (HTTP ${res.status}): ${JSON.stringify(errPayload)}`
-    );
+    const err = new Error(`PayPal token request failed (HTTP ${res.status}): ${JSON.stringify(errPayload)}`);
     err.paypalStatus  = res.status;
     err.paypalPayload = errPayload;
     throw err;
   }
 
   const data = await res.json();
-
-  // ── REQ 1: Confirm token obtained — log scope and lifetime, never the token ─
   console.log(
-    `[create-payment] ✅ PayPal token obtained | ` +
-    `token_type=${data.token_type} | ` +
-    `expires_in=${data.expires_in}s | ` +
-    `scope="${data.scope}"`
+    `[create-payment] ✅ PayPal token obtained | token_type=${data.token_type} | expires_in=${data.expires_in}s`
   );
-
   return data.access_token;
 }
 
 // ─── Rate limiting (in-memory per function instance) ─────────────────────────
-// For production scale, replace with Redis via Upstash or Netlify Edge.
 const rlStore = new Map();
-
 function isRateLimited(ip) {
-  const now    = Date.now();
-  const window = 60_000; // 1 minute
-  const limit  = 5;      // max requests per window
-  const entry  = rlStore.get(ip) || { count: 0, windowStart: now };
-
-  if (now - entry.windowStart > window) {
-    entry.count       = 1;
-    entry.windowStart = now;
-  } else {
-    entry.count++;
-  }
-
+  const now   = Date.now(), window = 60_000, limit = 5;
+  const entry = rlStore.get(ip) || { count: 0, windowStart: now };
+  if (now - entry.windowStart > window) { entry.count = 1; entry.windowStart = now; }
+  else { entry.count++; }
   rlStore.set(ip, entry);
   return entry.count > limit;
 }
 
 // ─── CORS helper ─────────────────────────────────────────────────────────────
 function corsHeaders(event) {
-  const allowed = process.env.ALLOWED_ORIGIN || '';
-  const origin  = event.headers['origin'] || '';
+  const allowed   = process.env.ALLOWED_ORIGIN || '';
+  const origin    = event.headers['origin'] || '';
   const isAllowed =
     (allowed && origin === allowed) ||
     /^https:\/\/[a-z0-9-]+\.netlify\.app$/.test(origin);
-
   return {
     'Access-Control-Allow-Origin':  isAllowed ? origin : '',
     'Access-Control-Allow-Headers': 'Content-Type',
@@ -208,19 +230,11 @@ function corsHeaders(event) {
 exports.handler = async (event) => {
   const headers = corsHeaders(event);
 
-  if (event.httpMethod === 'OPTIONS') {
-    return { statusCode: 204, headers, body: '' };
-  }
-
+  if (event.httpMethod === 'OPTIONS') return { statusCode: 204, headers, body: '' };
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({ error: 'Method Not Allowed' }),
-    };
+    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
-  // Rate limit by IP
   const clientIP =
     (event.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
 
@@ -233,22 +247,19 @@ exports.handler = async (event) => {
     };
   }
 
-  // Parse body
   let body;
   try {
     body = JSON.parse(event.body || '{}');
   } catch {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: 'Corps de requête invalide.' }),
-    };
+    return { statusCode: 400, headers, body: JSON.stringify({ error: 'Corps de requête invalide.' }) };
   }
 
-  const { room, checkIn, checkOut, guests } = body;
+  // Backward compat: if `room` (string) is sent instead of `rooms` (array), convert
+  const rawRooms = normaliseRooms(body.rooms, body.room);
+  const { checkIn, checkOut, guests } = body;
 
   // Server-side validation
-  const errors = validateInput({ room, checkIn, checkOut, guests });
+  const errors = validateInput({ rooms: rawRooms, checkIn, checkOut, guests });
   if (errors.length > 0) {
     return {
       statusCode: 422,
@@ -257,51 +268,49 @@ exports.handler = async (event) => {
     };
   }
 
-  // ── REQ 4: Resolve and log the base URL once — visible in every invocation ──
-  const base = process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+  const { rooms } = parseRooms(rawRooms);
+  const base      = process.env.PAYPAL_BASE_URL || 'https://api-m.paypal.com';
+  const roomLabel = buildRoomLabel(rooms);
+
   console.log(
-    `[create-payment] ▶ invocation start | ` +
-    `IP=${clientIP} | room=${room} | checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
-    `PAYPAL_BASE_URL=${base} (${process.env.PAYPAL_BASE_URL ? 'from env' : 'using default'})`
+    `[create-payment] ▶ invocation | IP=${clientIP} | rooms=${roomLabel} | ` +
+    `checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
+    `PAYPAL_BASE_URL=${base} (${process.env.PAYPAL_BASE_URL ? 'from env' : 'default'})`
   );
 
   try {
-    const { totalMAD, totalEUR, nights } = calculatePrice(
-      room, checkIn, checkOut, guests
-    );
+    const { totalMAD, totalEUR, nights } = calculatePrice(rooms, checkIn, checkOut, guests);
 
     console.log(
-      `[create-payment] Price computed | room=${room} | nights=${nights} | ` +
+      `[create-payment] Price computed | ${roomLabel} | nights=${nights} | ` +
       `totalMAD=${totalMAD} | totalEUR=${totalEUR}`
     );
 
-    // Pass base into getPayPalAccessToken so it uses the same URL
-    const token = await getPayPalAccessToken(base);
-
-    // Idempotency key — prevents duplicate orders on retries
+    const token          = await getPayPalAccessToken(base);
     const idempotencyKey = crypto.randomUUID();
     const orderUrl       = `${base}/v2/checkout/orders`;
 
-    // Build the order payload
+    // Compact custom_id (max 127 chars) — read back by verify-payment server-side.
+    // Stores the authoritative booking params so verify-payment never has to trust
+    // what the browser sends after capture.
+    const s = rooms.find(r => r.type === 'single')?.qty ?? 0;
+    const d = rooms.find(r => r.type === 'double')?.qty ?? 0;
+    const t = rooms.find(r => r.type === 'triple')?.qty ?? 0;
+    const customId = JSON.stringify({
+      s, d, t,
+      ci: checkIn,
+      co: checkOut,
+      g:  String(guests),
+      m:  String(totalMAD),
+    });
+
     const orderPayload = {
       intent: 'CAPTURE',
-      purchase_units: [
-        {
-          description: `Tiznit Hotel — ${ROOM_CATALOG[room].name} — ${nights} nuit(s) — ${checkIn} au ${checkOut}`,
-          amount: {
-            currency_code: 'EUR',
-            value:         totalEUR,   // amount set by server, not client
-          },
-          // Stash booking params for cross-verification in verify-payment
-          custom_id: JSON.stringify({
-            room,
-            checkIn,
-            checkOut,
-            guests:   String(guests),
-            totalMAD: String(totalMAD),
-          }),
-        },
-      ],
+      purchase_units: [{
+        description: `Tiznit Hotel — ${roomLabel} — ${guests} pers. — ${nights} nuit(s)`,
+        amount: { currency_code: 'EUR', value: totalEUR },
+        custom_id: customId,
+      }],
       application_context: {
         brand_name:          'Tiznit Hotel',
         landing_page:        'NO_PREFERENCE',
@@ -310,10 +319,9 @@ exports.handler = async (event) => {
       },
     };
 
-    // ── REQ 1 + 4: Log the full request being sent to PayPal ─────────────
     console.log(
       `[create-payment] PayPal order request → ${orderUrl} | ` +
-      `idempotency_key=${idempotencyKey} | ` +
+      `idempotency_key=${idempotencyKey} | custom_id_len=${customId.length} | ` +
       `payload=${JSON.stringify(orderPayload)}`
     );
 
@@ -327,24 +335,14 @@ exports.handler = async (event) => {
       body: JSON.stringify(orderPayload),
     });
 
-    // ── REQ 2 + 5: On failure log the complete PayPal error payload ───────
     if (!orderRes.ok) {
       let errBody;
       try   { errBody = await orderRes.json(); }
       catch { errBody = { raw: await orderRes.text() }; }
-
       console.error(
-        `[create-payment] ❌ PayPal ORDER creation failed | ` +
-        `HTTP ${orderRes.status} ${orderRes.statusText} | ` +
-        `url=${orderUrl} | ` +
-        `paypal_error_name=${errBody.name || 'n/a'} | ` +
-        `paypal_error_message=${errBody.message || 'n/a'} | ` +
-        `paypal_error_details=${JSON.stringify(errBody.details || [])} | ` +
-        `full_response=${JSON.stringify(errBody)}`
+        `[create-payment] ❌ PayPal ORDER failed | HTTP ${orderRes.status} | ` +
+        `paypal_error=${JSON.stringify(errBody)}`
       );
-
-      // Attach full PayPal payload to the thrown error so the catch block
-      // can log it again if needed — nothing is lost
       const err = new Error(
         `PayPal order creation failed (HTTP ${orderRes.status}): ` +
         `${errBody.name || ''} — ${errBody.message || JSON.stringify(errBody)}`
@@ -354,56 +352,34 @@ exports.handler = async (event) => {
       throw err;
     }
 
-    // ── REQ 1: Log the full successful PayPal order response ─────────────
     const order = await orderRes.json();
     console.log(
-      `[create-payment] ✅ PayPal order CREATED | ` +
-      `id=${order.id} | ` +
-      `status=${order.status} | ` +
-      `intent=${order.intent} | ` +
+      `[create-payment] ✅ PayPal order CREATED | id=${order.id} | status=${order.status} | ` +
       `currency=${order.purchase_units?.[0]?.amount?.currency_code} | ` +
-      `value=${order.purchase_units?.[0]?.amount?.value} | ` +
-      `links=${JSON.stringify((order.links || []).map(l => `${l.rel}:${l.href}`))}`
+      `value=${order.purchase_units?.[0]?.amount?.value}`
     );
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({
-        orderID:  order.id,
-        totalMAD,
-        totalEUR,
-        nights,
-      }),
+      body: JSON.stringify({ orderID: order.id, totalMAD, totalEUR, nights }),
     };
 
   } catch (err) {
-    // ── Surface the full error in the function logs ───────────────────────
-    // PayPal errors carry .paypalStatus and .paypalPayload (attached above).
-    // Config / JS errors carry .stack only.
     console.error(
-      `[create-payment] ❌ FATAL | ` +
-      `message=${err.message} | ` +
+      `[create-payment] ❌ FATAL | message=${err.message} | ` +
       `paypalStatus=${err.paypalStatus || 'n/a'} | ` +
       `paypalPayload=${err.paypalPayload ? JSON.stringify(err.paypalPayload) : 'n/a'} | ` +
       `stack=${err.stack || 'n/a'}`
     );
-
-    // ── Return a clear, structured JSON error instead of a generic message ─
-    // PayPal API errors  → 502 + the exact PayPal error object
-    // Config/credential  → 500 + the actionable message
-    // Unexpected JS error→ 500 + err.message (never a blank "internal error")
-    const statusCode = err.paypalStatus ? 502 : 500;
-    const body = {
-      error: err.message,
-      ...(err.paypalStatus  && { paypalHttpStatus: err.paypalStatus }),
-      ...(err.paypalPayload && { paypalError:      err.paypalPayload }),
-    };
-
     return {
-      statusCode,
+      statusCode: err.paypalStatus ? 502 : 500,
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        error: err.message,
+        ...(err.paypalStatus  && { paypalHttpStatus: err.paypalStatus }),
+        ...(err.paypalPayload && { paypalError:      err.paypalPayload }),
+      }),
     };
   }
 };
