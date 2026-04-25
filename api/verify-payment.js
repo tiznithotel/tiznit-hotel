@@ -40,9 +40,9 @@ const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || process.env.ORIGINE_AUTORIS
 
 // ─── Authoritative price catalog (must match create-payment.js exactly) ──────
 const ROOM_CATALOG = {
-  single: { name: 'Chambre Single', priceMAD: 247, maxGuests: 2 },
-  double: { name: 'Chambre Double', priceMAD: 310, maxGuests: 3 },
-  triple: { name: 'Chambre Triple', priceMAD: 438, maxGuests: 4 },
+  single: { name: 'Chambre Single', priceMAD: 247, capacity: 1 },
+  double: { name: 'Chambre Double', priceMAD: 310, capacity: 2 },
+  triple: { name: 'Chambre Triple', priceMAD: 438, capacity: 3 },
 };
 const BREAKFAST        = 36;
 const TAX              = 10;
@@ -50,54 +50,76 @@ const MAD_TO_EUR       = 0.093;
 const AMOUNT_TOLERANCE = 0.02;   // 2-cent rounding tolerance
 const MAX_STAY_NIGHTS  = 90;
 
-// ─── Price engine (must be identical to create-payment.js) ───────────────────
-function computeExpectedEUR(room, checkIn, checkOut, guests) {
-  const r      = ROOM_CATALOG[room];
+// ─── Price engine (must match create-payment.js exactly) ─────────────────────
+function computeTotalMAD(rooms, checkIn, checkOut, guests) {
   const nights = Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000);
   const g      = parseInt(guests, 10);
-  let   total  = r.priceMAD * nights + BREAKFAST * g * nights + TAX * g * nights;
-  if (nights > 5) total = Math.round(total * 0.8);
-  return parseFloat((total * MAD_TO_EUR).toFixed(2));
-}
-
-function computeTotalMAD(room, checkIn, checkOut, guests) {
-  const r      = ROOM_CATALOG[room];
-  const nights = Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000);
-  const g      = parseInt(guests, 10);
-  let   total  = r.priceMAD * nights + BREAKFAST * g * nights + TAX * g * nights;
+  const roomCost = rooms.reduce((s, r) => s + ROOM_CATALOG[r.type].priceMAD * r.qty * nights, 0);
+  let   total    = roomCost + BREAKFAST * g * nights + TAX * g * nights;
   if (nights > 5) total = Math.round(total * 0.8);
   return total;
 }
 
-// ─── Input validation ─────────────────────────────────────────────────────────
-function validateInput({ orderID, room, checkIn, checkOut, guests, name, email }) {
+function computeExpectedEUR(rooms, checkIn, checkOut, guests) {
+  return parseFloat((computeTotalMAD(rooms, checkIn, checkOut, guests) * MAD_TO_EUR).toFixed(2));
+}
+
+function buildRoomLabel(rooms) {
+  return rooms
+    .filter(r => r.qty > 0)
+    .map(r => `${r.qty} ${r.qty > 1 ? ROOM_CATALOG[r.type].name.replace('Chambre ', 'Chambres ') + 's' : ROOM_CATALOG[r.type].name}`)
+    .join(' + ');
+}
+
+// ─── Parse custom_id stored by create-payment (authoritative booking data) ───
+function parseCustomId(customIdStr, orderID) {
+  if (!customIdStr) {
+    console.error(`[verify-payment] Missing custom_id | orderID=${orderID}`);
+    throw new Error('custom_id absent de la commande PayPal.');
+  }
+  let data;
+  try { data = JSON.parse(customIdStr); } catch {
+    console.error(`[verify-payment] Invalid custom_id JSON | orderID=${orderID} | raw=${customIdStr}`);
+    throw new Error('custom_id invalide.');
+  }
+  const authRooms = [
+    { type: 'single', qty: parseInt(data.s, 10) || 0 },
+    { type: 'double', qty: parseInt(data.d, 10) || 0 },
+    { type: 'triple', qty: parseInt(data.t, 10) || 0 },
+  ].filter(r => r.qty > 0);
+  if (authRooms.length === 0 || !data.ci || !data.co) {
+    throw new Error('custom_id incomplet.');
+  }
+  return {
+    authRooms,
+    authCheckIn:  data.ci,
+    authCheckOut: data.co,
+    authGuests:   parseInt(data.g, 10) || 1,
+    authTotalMAD: parseInt(data.m, 10) || 0,
+  };
+}
+
+// ─── Input validation (early UX check — authoritative data comes from custom_id) ─
+function validateInput({ orderID, checkIn, checkOut, guests, name, email }) {
   const errors = [];
 
-  // PayPal live order IDs are 17-character uppercase alphanumeric strings
-  if (!orderID || typeof orderID !== 'string' || !/^[A-Z0-9]{17}$/.test(orderID)) {
+  if (!orderID || typeof orderID !== 'string' || !/^[A-Z0-9]{15,20}$/.test(orderID)) {
     errors.push('Order ID PayPal invalide.');
-  }
-
-  if (!room || !ROOM_CATALOG[room]) {
-    errors.push('Type de chambre invalide.');
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn))  errors.push("Date d'arrivée invalide.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) errors.push('Date de départ invalide.');
 
   if (errors.length === 0) {
-    const ci     = new Date(checkIn);
-    const co     = new Date(checkOut);
+    const ci = new Date(checkIn), co = new Date(checkOut);
     const nights = Math.round((co - ci) / 86400000);
-    if (co <= ci)                errors.push("La date de départ doit être après l'arrivée.");
+    if (co <= ci)                 errors.push("La date de départ doit être après l'arrivée.");
     if (nights > MAX_STAY_NIGHTS) errors.push(`Séjour maximum : ${MAX_STAY_NIGHTS} nuits.`);
   }
 
   const g = parseInt(guests, 10);
-  if (!Number.isInteger(g) || g < 1 || g > 4) {
-    errors.push('Nombre de voyageurs invalide (1–4).');
-  } else if (room && ROOM_CATALOG[room] && g > ROOM_CATALOG[room].maxGuests) {
-    errors.push(`Capacité maximale : ${ROOM_CATALOG[room].maxGuests} personnes.`);
+  if (!Number.isInteger(g) || g < 1 || g > 20) {
+    errors.push('Nombre de voyageurs invalide (1–20).');
   }
 
   if (name  && (typeof name  !== 'string' || name.length  > 120)) errors.push('Nom invalide.');
@@ -352,23 +374,22 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Corps de requête invalide.' });
   }
 
-  const { orderID, name, email, room, checkIn, checkOut, guests } = body;
+  const { orderID, name, email, checkIn, checkOut, guests } = body;
 
   const base = PAYPAL_BASE_URL;
 
   console.log(
     '[verify-payment] Invocation start | ' +
-    `IP=${clientIP} | orderID=${orderID} | room=${room} | ` +
+    `paypal_env=${IS_SANDBOX ? 'SANDBOX' : 'LIVE'} | ` +
+    `IP=${clientIP} | orderID=${orderID} | ` +
     `checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
-    `PAYPAL_BASE_URL=${base} (${(process.env.PAYPAL_BASE_URL || process.env.URL_BASE_PAYPAL) ? 'from env' : 'using default'})`
+    `base_url=${base}`
   );
 
-  // Server-side validation
-  const errors = validateInput({ orderID, room, checkIn, checkOut, guests, name, email });
+  // Early validation (UX only — authoritative data comes from custom_id below)
+  const errors = validateInput({ orderID, checkIn, checkOut, guests, name, email });
   if (errors.length > 0) {
-    console.warn(
-      `[verify-payment] Validation failed | IP=${clientIP} | errors=${JSON.stringify(errors)}`
-    );
+    console.warn(`[verify-payment] Validation failed | IP=${clientIP} | errors=${JSON.stringify(errors)}`);
     return res.status(422).json({ error: 'Données invalides.', details: errors });
   }
 
@@ -416,60 +437,60 @@ module.exports = async function handler(req, res) {
       return res.status(422).json({ error: 'Devise de paiement invalide.' });
     }
 
-    // ── 4. Assert amount matches server-computed expected price ────────────────
-    const expectedEUR = computeExpectedEUR(room, checkIn, checkOut, guests);
+    // ── 4. Read authoritative booking data from custom_id (never trust frontend) ─
+    const customIdStr = order.purchase_units?.[0]?.custom_id;
+    const { authRooms, authCheckIn, authCheckOut, authGuests } =
+      parseCustomId(customIdStr, orderID);
+
+    const authRoomLabel = buildRoomLabel(authRooms);
+    console.log(
+      `[verify-payment] custom_id parsed | rooms=${authRoomLabel} | ` +
+      `checkIn=${authCheckIn} | checkOut=${authCheckOut} | guests=${authGuests}`
+    );
+
+    // ── 5. Assert amount matches server-computed expected price ────────────────
+    const expectedEUR = computeExpectedEUR(authRooms, authCheckIn, authCheckOut, authGuests);
     const diff        = Math.abs(capturedAmount - expectedEUR);
 
     console.log(
       '[verify-payment] Amount check | ' +
-      `capturedEUR=${capturedAmount} | expectedEUR=${expectedEUR} | diff=${diff} | ` +
-      `tolerance=${AMOUNT_TOLERANCE}`
+      `capturedEUR=${capturedAmount} | expectedEUR=${expectedEUR} | diff=${diff} | tolerance=${AMOUNT_TOLERANCE}`
     );
 
     if (diff > AMOUNT_TOLERANCE) {
-      // SECURITY ALERT — log everything needed for forensic investigation
       console.error(
         '[verify-payment] SECURITY: PRICE_MISMATCH | ' +
         `orderID=${orderID} | capturedEUR=${capturedAmount} | expectedEUR=${expectedEUR} | ` +
-        `diff=${diff} | room=${room} | checkIn=${checkIn} | checkOut=${checkOut} | ` +
-        `guests=${guests} | IP=${clientIP}`
+        `diff=${diff} | rooms=${authRoomLabel} | checkIn=${authCheckIn} | checkOut=${authCheckOut} | ` +
+        `guests=${authGuests} | IP=${clientIP}`
       );
       return res.status(422).json({
-        error:
-          'Le montant capturé ne correspond pas au prix attendu. ' +
-          'La réservation ne peut pas être confirmée.',
+        error: 'Le montant capturé ne correspond pas au prix attendu. La réservation ne peut pas être confirmée.',
       });
     }
 
-    // ── 5. Generate reservation number (crypto-secure, server-side only) ──────
+    // ── 6. Generate reservation number ────────────────────────────────────────
     const now      = new Date();
-    const datePart =
-      String(now.getFullYear()).slice(-2) +
-      String(now.getMonth() + 1).padStart(2, '0') +
-      String(now.getDate()).padStart(2, '0');
-    const randPart = crypto.randomBytes(3).toString('hex').toUpperCase();
-    const resNb    = `TH-${datePart}-${randPart}`;
+    const datePart = String(now.getFullYear()).slice(-2) +
+                     String(now.getMonth() + 1).padStart(2, '0') +
+                     String(now.getDate()).padStart(2, '0');
+    const resNb    = `TH-${datePart}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
-    // ── 6. Compute final totals ────────────────────────────────────────────────
-    const totalMAD = computeTotalMAD(room, checkIn, checkOut, guests);
-    const nights   = Math.round(
-      (new Date(checkOut) - new Date(checkIn)) / 86400000
-    );
-    const g        = parseInt(guests, 10);
-    const roomName = ROOM_CATALOG[room].name;   // use server-side name, never client
-
+    // ── 7. Compute final totals from authoritative data ───────────────────────
+    const totalMAD = computeTotalMAD(authRooms, authCheckIn, authCheckOut, authGuests);
+    const nights   = Math.round((new Date(authCheckOut) - new Date(authCheckIn)) / 86400000);
     const safeName  = esc(name  || 'Client', 120);
     const safeEmail = email ? esc(email, 254) : '';
 
-    // ── 7. Send confirmation email (non-blocking on failure) ──────────────────
+    // ── 8. Send confirmation email ────────────────────────────────────────────
     await sendConfirmationEmail({
       resNb,
       name:     safeName,
       email:    safeEmail,
-      room:     roomName,
-      checkIn,
-      checkOut,
-      guests:   g,
+      room:     authRoomLabel,
+      checkIn:  authCheckIn,
+      checkOut: authCheckOut,
+      guests:   authGuests,
       nights,
       totalMAD,
       totalEUR: capturedAmount.toFixed(2),
@@ -478,23 +499,21 @@ module.exports = async function handler(req, res) {
 
     console.log(
       '[verify-payment] Booking confirmed | ' +
-      `resNb=${resNb} | room=${roomName} | nights=${nights} | ` +
-      `EUR=${capturedAmount} | IP=${clientIP}`
+      `resNb=${resNb} | rooms=${authRoomLabel} | nights=${nights} | EUR=${capturedAmount} | IP=${clientIP}`
     );
 
-    // ── 8. Return booking details (browser stores in sessionStorage, not URL) ─
+    // ── 9. Return booking details ─────────────────────────────────────────────
     return res.status(200).json({
       success:  true,
       resNb,
-      room:     roomName,
-      checkIn,
-      checkOut,
-      guests:   g,
+      room:     authRoomLabel,
+      checkIn:  authCheckIn,
+      checkOut: authCheckOut,
+      guests:   authGuests,
       nights,
       totalMAD,
       totalEUR: capturedAmount.toFixed(2),
       paypalId: paypalCaptureId,
-      // name/email intentionally excluded — PII should not be echoed back
     });
 
   } catch (err) {
