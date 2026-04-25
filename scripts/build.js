@@ -43,7 +43,7 @@ if (fs.existsSync(envPath)) {
 // ── Mode detection ────────────────────────────────────────────────────────
 const PAYPAL_ENV   = (process.env.PAYPAL_ENV || 'live').toLowerCase();
 const isSandbox    = PAYPAL_ENV === 'sandbox';
-const IS_TEST_MODE = (process.env.TEST_PAYMENT_MODE || '').toLowerCase() === 'true';
+const IS_TEST_MODE = (process.env.TEST_PAYMENT_MODE || '').trim().toLowerCase() === 'true';
 const PLACEHOLDER      = '__PAYPAL_CLIENT_ID__';
 const TEST_PLACEHOLDER = '__TEST_PAYMENT_MODE__';
 
