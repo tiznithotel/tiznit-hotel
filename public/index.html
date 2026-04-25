@@ -398,10 +398,11 @@ nav.s .ham span{background:var(--dark)}
   .hbtns{flex-direction:column;align-items:flex-start;gap:10px}
   .hbtns a{width:100%;justify-content:center}
   .hbtns .bg{display:none}
+  .hbtns .bo{display:none}
   .hbar{flex-direction:column;max-width:100%;margin-top:22px}
   .hbar-field{padding:12px 18px}
   .hbar-field+.hbar-field::before{top:0;bottom:auto;left:18px;right:18px;width:auto;height:1px}
-  .hbar-btn{padding:15px 18px;font-size:10px}
+  .hbar-btn{padding:18px 20px;font-size:11px;letter-spacing:2.5px;font-weight:500}
   .story{padding:48px 20px;gap:28px}
   .story-photos{grid-template-columns:1fr 1fr;grid-template-rows:160px;gap:8px}
   .story-photos .p1{grid-row:span 1}
@@ -488,7 +489,7 @@ nav.s .ham span{background:var(--dark)}
     <div class="hbar">
       <div class="hbar-field">
         <label class="hbar-lbl" for="bb-ci">Arrivée</label>
-        <input type="date" id="bb-ci" class="hbar-inp">
+        <input type="date" id="bb-ci" class="hbar-inp" onchange="onCiChange('bb-ci','bb-co',null)">
       </div>
       <div class="hbar-field">
         <label class="hbar-lbl" for="bb-co">Départ</label>
@@ -870,7 +871,7 @@ nav.s .ham span{background:var(--dark)}
         </select>
       </div>
       <div class="fr">
-        <div class="fg2"><label class="fl3">Arrivée</label><input type="date" class="fi" id="ci" onchange="updateNextBtn()"></div>
+        <div class="fg2"><label class="fl3">Arrivée</label><input type="date" class="fi" id="ci" onchange="onCiChange('ci','co',updateNextBtn)"></div>
         <div class="fg2"><label class="fl3">Départ</label><input type="date" class="fi" id="co" onchange="updateNextBtn()"></div>
       </div>
       <div id="sugg-wrap" style="display:none">
@@ -1084,12 +1085,23 @@ function updateNextBtn(){
 }
 
 // BOOKING BAR → MODAL
+function onCiChange(ciId,coId,afterFn){
+  var ciVal=document.getElementById(ciId).value;
+  var coEl=document.getElementById(coId);
+  if(ciVal){
+    var d=new Date(ciVal);d.setDate(d.getDate()+1);
+    var minCo=d.toISOString().split('T')[0];
+    coEl.min=minCo;
+    if(coEl.value&&coEl.value<=ciVal) coEl.value='';
+  }
+  if(typeof afterFn==='function') afterFn();
+}
 function openFromBar(){
   var ci=document.getElementById('bb-ci').value;
   var co=document.getElementById('bb-co').value;
   var g=document.getElementById('bb-g').value;
   openModal();
-  if(ci) document.getElementById('ci').value=ci;
+  if(ci){document.getElementById('ci').value=ci;onCiChange('ci','co',null);}
   if(co) document.getElementById('co').value=co;
   document.getElementById('mg').value=g;
   onGuestsChange();
@@ -1106,8 +1118,11 @@ function openModal(t){
   document.getElementById('pp-sep').style.display='none';
   document.getElementById('pp-note').style.display='none';
   var td=new Date().toISOString().split('T')[0];
+  var tom=new Date();tom.setDate(tom.getDate()+1);var td2=tom.toISOString().split('T')[0];
   document.getElementById('ci').min=td;
-  document.getElementById('co').min=td;
+  document.getElementById('co').min=td2;
+  // Re-apply ci constraint if a ci value already exists
+  if(document.getElementById('ci').value) onCiChange('ci','co',null);
   showSuggestions();
   if(t){var c={single:0,double:0,triple:0};c[t]=1;setCounters(c);}
   else setCounters({single:0,double:0,triple:0});
@@ -1334,6 +1349,16 @@ function swa(){
 }
 
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){cm();clb()}});
+// Init hero bar min dates on page load
+(function(){
+  var td=new Date().toISOString().split('T')[0];
+  var tom=new Date();tom.setDate(tom.getDate()+1);
+  var td2=tom.toISOString().split('T')[0];
+  var bbCi=document.getElementById('bb-ci');
+  var bbCo=document.getElementById('bb-co');
+  if(bbCi) bbCi.min=td;
+  if(bbCo) bbCo.min=td2;
+})();
 </script>
 
 <!-- PayPal JS SDK

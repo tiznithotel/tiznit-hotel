@@ -465,8 +465,7 @@ module.exports = async function handler(req, res) {
 
     console.log(
       '[verify-payment] PayPal order retrieved | ' +
-      `orderID=${orderID} | status=${order.status} | ` +
-      `full_order=${JSON.stringify(order)}`
+      `orderID=${orderID} | status=${order.status}`
     );
 
     // ── 2. Assert the order is fully captured ─────────────────────────────────
