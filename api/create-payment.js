@@ -15,13 +15,23 @@
 
 const crypto = require('crypto');
 
-// ─── Resolved environment variables ──────────────────────────────────────────
-// Each variable accepts two naming schemes so either convention works in Vercel.
-// Primary name is checked first; alternate (French-style) name is the fallback.
-const PAYPAL_CLIENT_ID = process.env.PAYPAL_CLIENT_ID || process.env.ID_CLIENT_PAYPAL  || '';
-const PAYPAL_SECRET    = process.env.PAYPAL_SECRET    || process.env.SECRET_PAYPAL     || '';
-const PAYPAL_BASE_URL  = process.env.PAYPAL_BASE_URL  || process.env.URL_BASE_PAYPAL   || 'https://api-m.paypal.com';
-const ALLOWED_ORIGIN   = process.env.ALLOWED_ORIGIN   || process.env.ORIGINE_AUTORIS   || 'https://hoteltiznit.com';
+// ─── PayPal environment selection ─────────────────────────────────────────────
+// Set PAYPAL_ENV=sandbox in Vercel to use sandbox credentials.
+// Omit or set PAYPAL_ENV=live for production.
+const IS_SANDBOX = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox';
+
+const PAYPAL_CLIENT_ID = IS_SANDBOX
+  ? (process.env.PAYPAL_SANDBOX_CLIENT_ID || '')
+  : (process.env.PAYPAL_CLIENT_ID || process.env.ID_CLIENT_PAYPAL || '');
+
+const PAYPAL_SECRET = IS_SANDBOX
+  ? (process.env.PAYPAL_SANDBOX_SECRET || '')
+  : (process.env.PAYPAL_SECRET || process.env.SECRET_PAYPAL || '');
+
+const PAYPAL_BASE_URL = process.env.PAYPAL_BASE_URL || process.env.URL_BASE_PAYPAL
+  || (IS_SANDBOX ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com');
+
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || process.env.ORIGINE_AUTORIS || 'https://hoteltiznit.com';
 
 // ─── Authoritative price catalog ─────────────────────────────────────────────
 // Never expose this as a "source of truth" to the client.
@@ -300,8 +310,9 @@ module.exports = async function handler(req, res) {
 
   console.log(
     '[create-payment] Invocation start | ' +
+    `paypal_env=${IS_SANDBOX ? 'SANDBOX' : 'LIVE'} | ` +
     `IP=${clientIP} | rooms=${roomLabel} | checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
-    `PAYPAL_BASE_URL=${base}`
+    `base_url=${base}`
   );
 
   try {

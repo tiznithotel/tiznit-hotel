@@ -40,24 +40,42 @@ if (fs.existsSync(envPath)) {
     });
 }
 
-// ── Validate PAYPAL_CLIENT_ID (accepts either naming scheme) ─────────────
-const clientId    = (process.env.PAYPAL_CLIENT_ID || process.env.ID_CLIENT_PAYPAL || '').trim();
+// ── Sandbox vs Live selection ─────────────────────────────────────────────
+const PAYPAL_ENV = (process.env.PAYPAL_ENV || 'live').toLowerCase();
+const isSandbox  = PAYPAL_ENV === 'sandbox';
 const PLACEHOLDER = '__PAYPAL_CLIENT_ID__';
 
-if (!clientId) {
-  console.error('[build] ❌  PayPal client-id is not set.');
-  console.error('[build]     → Set either PAYPAL_CLIENT_ID or ID_CLIENT_PAYPAL in Vercel:');
-  console.error('[build]       Project Settings → Environment Variables');
-  console.error('[build]     → Locally: export PAYPAL_CLIENT_ID=<live-id>');
-  process.exit(1);
-}
+console.log('[build] 🌍  PayPal env : ' + (isSandbox ? 'SANDBOX' : 'LIVE'));
 
-// Sanity-check: live PayPal client-ids are 80-90 printable chars,
-// contain no whitespace, and must NOT start with "sandbox".
-if (/\s/.test(clientId) || clientId.toLowerCase().includes('sandbox')) {
-  console.error('[build] ❌  PAYPAL_CLIENT_ID (or ID_CLIENT_PAYPAL) looks like a sandbox id or contains whitespace.');
-  console.error('[build]     Obtain your LIVE client-id from developer.paypal.com → My Apps & Credentials → Live tab.');
-  process.exit(1);
+let clientId;
+if (isSandbox) {
+  clientId = (process.env.PAYPAL_SANDBOX_CLIENT_ID || '').trim();
+  if (!clientId) {
+    console.error('[build] ❌  Sandbox mode — PAYPAL_SANDBOX_CLIENT_ID is not set.');
+    console.error('[build]     → Add it in Vercel: Project Settings → Environment Variables');
+    process.exit(1);
+  }
+  if (/\s/.test(clientId)) {
+    console.error('[build] ❌  PAYPAL_SANDBOX_CLIENT_ID contains whitespace.');
+    process.exit(1);
+  }
+} else {
+  clientId = (process.env.PAYPAL_CLIENT_ID || process.env.ID_CLIENT_PAYPAL || '').trim();
+  if (!clientId) {
+    console.error('[build] ❌  Live mode — PAYPAL_CLIENT_ID is not set.');
+    console.error('[build]     → Add it in Vercel: Project Settings → Environment Variables');
+    process.exit(1);
+  }
+  if (/\s/.test(clientId)) {
+    console.error('[build] ❌  PAYPAL_CLIENT_ID contains whitespace.');
+    process.exit(1);
+  }
+  // Extra guard in live mode: warn if key looks like a sandbox key
+  if (clientId.toLowerCase().startsWith('sb-') || clientId.toLowerCase().includes('sandbox')) {
+    console.error('[build] ❌  Live mode: PAYPAL_CLIENT_ID looks like a sandbox key.');
+    console.error('[build]     Use developer.paypal.com → My Apps → Live tab.');
+    process.exit(1);
+  }
 }
 
 // ── Read index.html ───────────────────────────────────────────────────────
@@ -81,6 +99,7 @@ if (!html.includes(PLACEHOLDER)) {
 html = html.replace(PLACEHOLDER, clientId);
 fs.writeFileSync(htmlPath, html, 'utf8');
 
-console.log('[build] ✅  PAYPAL_CLIENT_ID injected into public/index.html');
-console.log('[build]     client-id length : ' + clientId.length + ' chars');
-console.log('[build]     first 8 chars    : ' + clientId.substring(0, 8) + '…  (rest redacted)');
+console.log('[build] ✅  Client-id injected into public/index.html');
+console.log('[build]     paypal_env    : ' + (isSandbox ? 'SANDBOX' : 'LIVE'));
+console.log('[build]     client-id len : ' + clientId.length + ' chars');
+console.log('[build]     first 8 chars : ' + clientId.substring(0, 8) + '…  (rest redacted)');

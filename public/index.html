@@ -1284,11 +1284,12 @@ function swa(){
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){cm();clb()}});
 </script>
 
-<!-- PayPal JS SDK — LIVE environment
+<!-- PayPal JS SDK
      ─────────────────────────────────────────────────────────────────────────
-     The __PAYPAL_CLIENT_ID__ placeholder below is replaced at build time by
-     scripts/build.js, which reads the PAYPAL_CLIENT_ID environment variable
-     set in Netlify → Site configuration → Environment variables.
+     The ATest123FakeSandboxClientId placeholder is replaced at build time by
+     scripts/build.js.
+     - PAYPAL_ENV=sandbox  → injects PAYPAL_SANDBOX_CLIENT_ID
+     - PAYPAL_ENV=live     → injects PAYPAL_CLIENT_ID  (default)
 
      ⚠  Netlify does NOT inject env vars into static HTML at runtime.
         A build step (node scripts/build.js) is required — see netlify.toml.
@@ -1302,5 +1303,5 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){cm();clb()}});
      the charge regardless of what client-id is used.
 
      To rotate: update PAYPAL_CLIENT_ID in Netlify env vars → redeploy.     -->
-<script src="https://www.paypal.com/sdk/js?client-id=AeQH54gSm3umt5qVr-l17RQ2kmaBmnDgZfSnWOdGcqCizwqZDsfPCVQenIPCjy1TvvtZpRa7_By7_yUN&currency=EUR&locale=fr_FR&disable-funding=credit,card" onload="renderPayPal()"></script></body>
+<script src="https://www.paypal.com/sdk/js?client-id=__PAYPAL_CLIENT_ID__&currency=EUR&locale=fr_FR&disable-funding=credit,card" onload="renderPayPal()"></script></body>
 </html>
