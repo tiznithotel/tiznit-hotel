@@ -397,6 +397,7 @@ nav.s .ham span{background:var(--dark)}
   .hs{font-size:14px;margin-bottom:28px;max-width:100%}
   .hbtns{flex-direction:column;align-items:flex-start;gap:10px}
   .hbtns a{width:100%;justify-content:center}
+  .hbtns .bg{display:none}
   .hbar{flex-direction:column;max-width:100%;margin-top:22px}
   .hbar-field{padding:12px 18px}
   .hbar-field+.hbar-field::before{top:0;bottom:auto;left:18px;right:18px;width:auto;height:1px}
@@ -1260,7 +1261,13 @@ function renderPayPal(){
       document.getElementById('paypal-success').style.display='none';
       alert('Erreur PayPal. Veuillez réessayer ou nous contacter via WhatsApp.');
     }
-  }).render('#paypal-button-container');
+  }).render('#paypal-button-container').then(function(){
+    container.style.position='relative';
+    var ov=document.createElement('div');
+    ov.style.cssText='position:absolute;inset:0;z-index:10;pointer-events:none;border-radius:6px;background:#1c1812;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px';
+    ov.innerHTML='<span style="color:#fff;font-size:14px;font-weight:600;letter-spacing:.3px;font-family:\'Jost\',sans-serif">&#128274;&nbsp;Payer par carte bancaire</span><span style="color:rgba(255,255,255,.6);font-size:11px;letter-spacing:.5px">Visa&nbsp;&middot;&nbsp;Mastercard&nbsp;&middot;&nbsp;Paiement s&#233;curis&#233;</span>';
+    container.appendChild(ov);
+  });
   ppRendered=true;
 }
 
