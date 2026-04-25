@@ -920,12 +920,12 @@ nav.s .ham span{background:var(--dark)}
         <span style="font-size:10px;color:var(--lm);letter-spacing:1px">OU PAYER EN LIGNE</span>
         <div style="flex:1;height:1px;background:var(--bdr)"></div>
       </div>
-      <div id="paypal-button-container" style="min-height:44px;display:none"></div>
+      <div id="paypal-button-container" style="min-height:50px;display:none"></div>
       <div id="paypal-success" style="display:none;background:#f0faf4;border:1px solid #2ecc71;padding:14px 16px;margin-top:10px;text-align:center">
         <span style="font-size:18px">✅</span>
         <p style="font-size:14px;color:#1a7a40;font-weight:500;margin-top:4px">Paiement confirmé ! Redirection...</p>
       </div>
-      <p id="pp-note" style="display:none;font-size:11px;text-align:center;color:var(--lm);margin-top:8px">Paiement sécurisé · PayPal · Visa · Mastercard</p>
+      <p id="pp-note" style="display:none;font-size:10px;text-align:center;color:var(--lm);margin-top:6px;letter-spacing:.3px">Paiement via prestataire certifié · Visa · Mastercard</p>
     </div>
   </div>
 </div>
@@ -1189,6 +1189,17 @@ function prevStep(){
 // onApprove    → calls /verify-payment (server verifies capture with PayPal API)
 // Booking data → stored in sessionStorage, NOT in URL params
 let ppRendered=false;
+var ppOverlay=null;
+function ppOverlayHTML(){
+  return '<div style="display:flex;align-items:center;justify-content:center;gap:7px">'
+    +'<svg width="11" height="14" viewBox="0 0 11 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">'
+    +'<rect x=".5" y="5.5" width="10" height="8" rx="1.5" stroke="rgba(255,255,255,.82)" stroke-width="1" fill="rgba(255,255,255,.1)"/>'
+    +'<path d="M2.5 5.5V4A3 3 0 0 1 8.5 4v1.5" stroke="rgba(255,255,255,.82)" stroke-width="1.3" stroke-linecap="round"/>'
+    +'<circle cx="5.5" cy="9.5" r="1" fill="rgba(255,255,255,.82)"/></svg>'
+    +'<span style="color:#fff;font-size:13.5px;font-weight:600;letter-spacing:.2px;font-family:\'Jost\',sans-serif">Payer par carte bancaire</span>'
+    +'</div>'
+    +'<span style="color:rgba(255,255,255,.46);font-size:10px;letter-spacing:.6px;text-transform:uppercase;font-family:\'Jost\',sans-serif;margin-top:3px">Visa&nbsp;&bull;&nbsp;Mastercard&nbsp;&bull;&nbsp;Paiement s&eacute;curis&eacute;</span>';
+}
 function renderPayPal(){
   var container=document.getElementById('paypal-button-container');
   if(!container) return;
@@ -1216,9 +1227,10 @@ function renderPayPal(){
   ppRendered=false;
   if(typeof paypal==='undefined') return;
   paypal.Buttons({
-    style:{layout:'vertical',color:'gold',shape:'rect',label:'pay',height:44},
+    style:{layout:'vertical',color:'gold',shape:'rect',label:'pay',height:50},
     // Step 1 — server creates PayPal order with server-calculated price
     createOrder:function(){
+      if(ppOverlay) ppOverlay.innerHTML='<div class="pp-spin"></div><span style="color:rgba(255,255,255,.55);font-size:11px;letter-spacing:.3px;margin-top:6px;font-family:\'Jost\',sans-serif">Connexion s&eacute;curis&eacute;e&hellip;</span>';
       return fetch('/api/create-payment',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -1272,16 +1284,25 @@ function renderPayPal(){
     },
     onError:function(err){
       console.error('PayPal error:',err);
+      if(ppOverlay) ppOverlay.innerHTML=ppOverlayHTML();
       document.getElementById('paypal-button-container').style.display='block';
       document.getElementById('paypal-success').style.display='none';
       alert('Erreur PayPal. Veuillez réessayer ou nous contacter via WhatsApp.');
     }
   }).render('#paypal-button-container').then(function(){
     container.style.position='relative';
+    container.style.minHeight='50px';
+    if(!document.getElementById('pp-spin-style')){
+      var s=document.createElement('style');s.id='pp-spin-style';
+      s.textContent='@keyframes ppSpin{to{transform:rotate(360deg)}}.pp-spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.15);border-top-color:rgba(255,255,255,.88);border-radius:50%;animation:ppSpin .7s linear infinite}';
+      document.head.appendChild(s);
+    }
     var ov=document.createElement('div');
-    ov.style.cssText='position:absolute;inset:0;z-index:10;pointer-events:none;border-radius:6px;background:#1c1812;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px';
-    ov.innerHTML='<span style="color:#fff;font-size:14px;font-weight:600;letter-spacing:.3px;font-family:\'Jost\',sans-serif">&#128274;&nbsp;Payer par carte bancaire</span><span style="color:rgba(255,255,255,.6);font-size:11px;letter-spacing:.5px">Visa&nbsp;&middot;&nbsp;Mastercard&nbsp;&middot;&nbsp;Paiement s&#233;curis&#233;</span>';
+    ov.id='pp-custom-overlay';
+    ov.style.cssText='position:absolute;inset:0;z-index:10;pointer-events:none;border-radius:7px;background:linear-gradient(150deg,#1f1b13 0%,#26201a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 10px rgba(0,0,0,.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer';
+    ov.innerHTML=ppOverlayHTML();
     container.appendChild(ov);
+    ppOverlay=ov;
   });
   ppRendered=true;
 }
