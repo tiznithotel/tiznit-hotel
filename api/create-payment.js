@@ -26,9 +26,9 @@ const ALLOWED_ORIGIN   = process.env.ALLOWED_ORIGIN   || process.env.ORIGINE_AUT
 // ─── Authoritative price catalog ─────────────────────────────────────────────
 // Never expose this as a "source of truth" to the client.
 const ROOM_CATALOG = {
-  single: { name: 'Chambre Single', priceMAD: 247, maxGuests: 2 },
-  double: { name: 'Chambre Double', priceMAD: 310, maxGuests: 3 },
-  triple: { name: 'Chambre Triple', priceMAD: 438, maxGuests: 4 },
+  single: { name: 'Chambre Single', priceMAD: 247, capacity: 1 },
+  double: { name: 'Chambre Double', priceMAD: 310, capacity: 2 },
+  triple: { name: 'Chambre Triple', priceMAD: 438, capacity: 3 },
 };
 const BREAKFAST_PER_PERSON_PER_NIGHT = 36;
 const TAX_PER_PERSON_PER_NIGHT       = 10;
@@ -37,13 +37,35 @@ const DISCOUNT_RATE                  = 0.20;
 const MAD_TO_EUR                     = 0.093;
 const MAX_STAY_NIGHTS                = 90;
 
-// ─── Input validation ─────────────────────────────────────────────────────────
-function validateInput({ room, checkIn, checkOut, guests }) {
-  const errors = [];
-
-  if (!room || !ROOM_CATALOG[room]) {
-    errors.push('Type de chambre invalide.');
+// ─── Rooms parser ─────────────────────────────────────────────────────────────
+function parseRooms(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { valid: false, rooms: [], errors: ['Au moins une chambre est requise.'] };
   }
+  const validTypes = Object.keys(ROOM_CATALOG);
+  const errors = [], rooms = [];
+  for (const r of raw) {
+    if (!r || !validTypes.includes(r.type)) {
+      errors.push(`Type de chambre invalide : "${r && r.type}".`);
+      continue;
+    }
+    const qty = parseInt(r.qty, 10);
+    if (!Number.isInteger(qty) || qty < 0) {
+      errors.push(`Quantité invalide pour ${r.type}.`);
+      continue;
+    }
+    rooms.push({ type: r.type, qty });
+  }
+  const totalRooms = rooms.reduce((s, r) => s + r.qty, 0);
+  if (errors.length === 0 && totalRooms === 0) {
+    errors.push('Au moins une chambre est requise.');
+  }
+  return { valid: errors.length === 0, rooms, errors };
+}
+
+// ─── Input validation ─────────────────────────────────────────────────────────
+function validateInput({ rooms: rawRooms, checkIn, checkOut, guests }) {
+  const errors = [];
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -56,39 +78,39 @@ function validateInput({ room, checkIn, checkOut, guests }) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(checkOut) || isNaN(co.getTime())) {
     errors.push('Date de départ invalide.');
   }
-
   if (errors.length === 0) {
-    if (ci < today) {
-      errors.push("La date d'arrivée ne peut pas être dans le passé.");
-    }
-    if (co <= ci) {
-      errors.push("La date de départ doit être après l'arrivée.");
-    }
+    if (ci < today)  errors.push("La date d'arrivée ne peut pas être dans le passé.");
+    if (co <= ci)    errors.push("La date de départ doit être après l'arrivée.");
     const nights = Math.round((co - ci) / 86400000);
-    if (nights > MAX_STAY_NIGHTS) {
-      errors.push(`Séjour maximum : ${MAX_STAY_NIGHTS} nuits.`);
-    }
+    if (nights > MAX_STAY_NIGHTS) errors.push(`Séjour maximum : ${MAX_STAY_NIGHTS} nuits.`);
   }
 
   const g = parseInt(guests, 10);
-  if (!Number.isInteger(g) || g < 1 || g > 4) {
-    errors.push('Nombre de voyageurs invalide (1–4).');
-  } else if (room && ROOM_CATALOG[room] && g > ROOM_CATALOG[room].maxGuests) {
-    errors.push(
-      `Capacité maximale pour cette chambre : ${ROOM_CATALOG[room].maxGuests} personnes.`
+  if (!Number.isInteger(g) || g < 1 || g > 20) {
+    errors.push('Nombre de voyageurs invalide (1–20).');
+  }
+
+  const { valid: roomsValid, rooms: parsedRooms, errors: roomErrors } = parseRooms(rawRooms);
+  errors.push(...roomErrors);
+
+  if (roomsValid && Number.isInteger(g) && g >= 1) {
+    const capacity = parsedRooms.reduce(
+      (sum, r) => sum + (ROOM_CATALOG[r.type]?.capacity ?? 0) * r.qty, 0
     );
+    if (g > capacity) {
+      errors.push(`Capacité insuffisante : ${capacity} place(s) pour ${g} personne(s).`);
+    }
   }
 
   return errors;
 }
 
 // ─── Price engine (single source of truth) ───────────────────────────────────
-function calculatePrice(room, checkIn, checkOut, guests) {
-  const r      = ROOM_CATALOG[room];
+function calculatePrice(rooms, checkIn, checkOut, guests) {
   const nights = Math.round((new Date(checkOut) - new Date(checkIn)) / 86400000);
   const g      = parseInt(guests, 10);
 
-  const roomCost  = r.priceMAD * nights;
+  const roomCost  = rooms.reduce((sum, r) => sum + ROOM_CATALOG[r.type].priceMAD * r.qty * nights, 0);
   const breakfast = BREAKFAST_PER_PERSON_PER_NIGHT * g * nights;
   const tax       = TAX_PER_PERSON_PER_NIGHT * g * nights;
   let   totalMAD  = roomCost + breakfast + tax;
@@ -99,6 +121,13 @@ function calculatePrice(room, checkIn, checkOut, guests) {
 
   const totalEUR = (totalMAD * MAD_TO_EUR).toFixed(2);
   return { totalMAD, totalEUR, nights };
+}
+
+function buildRoomLabel(rooms) {
+  return rooms
+    .filter(r => r.qty > 0)
+    .map(r => `${r.qty} ${r.qty > 1 ? ROOM_CATALOG[r.type].name.replace('Chambre ', 'Chambres ') + 's' : ROOM_CATALOG[r.type].name}`)
+    .join(' + ');
 }
 
 // ─── PayPal: obtain OAuth2 access token (server-to-server) ───────────────────
@@ -254,28 +283,32 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Corps de requête invalide.' });
   }
 
-  const { room, checkIn, checkOut, guests } = body;
+  const { rooms: rawRooms, checkIn, checkOut, guests } = body;
+
+  console.log('[create-payment] body received | ' + JSON.stringify({ rawRooms, checkIn, checkOut, guests }));
 
   // Server-side validation
-  const errors = validateInput({ room, checkIn, checkOut, guests });
+  const errors = validateInput({ rooms: rawRooms, checkIn, checkOut, guests });
   if (errors.length > 0) {
+    console.warn('[create-payment] 422 details:', errors);
     return res.status(422).json({ error: 'Données invalides.', details: errors });
   }
 
-  // Resolve and log the PayPal base URL — makes live vs sandbox immediately obvious
-  const base = PAYPAL_BASE_URL;
+  const { rooms } = parseRooms(rawRooms);
+  const roomLabel  = buildRoomLabel(rooms);
+  const base       = PAYPAL_BASE_URL;
 
   console.log(
     '[create-payment] Invocation start | ' +
-    `IP=${clientIP} | room=${room} | checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
-    `PAYPAL_BASE_URL=${base} (${(process.env.PAYPAL_BASE_URL || process.env.URL_BASE_PAYPAL) ? 'from env' : 'using default — set PAYPAL_BASE_URL or URL_BASE_PAYPAL in Vercel'})`
+    `IP=${clientIP} | rooms=${roomLabel} | checkIn=${checkIn} | checkOut=${checkOut} | guests=${guests} | ` +
+    `PAYPAL_BASE_URL=${base}`
   );
 
   try {
-    const { totalMAD, totalEUR, nights } = calculatePrice(room, checkIn, checkOut, guests);
+    const { totalMAD, totalEUR, nights } = calculatePrice(rooms, checkIn, checkOut, guests);
 
     console.log(
-      `[create-payment] Price computed | room=${room} | nights=${nights} | ` +
+      `[create-payment] Price computed | rooms=${roomLabel} | nights=${nights} | ` +
       `totalMAD=${totalMAD} | totalEUR=${totalEUR}`
     );
 
@@ -283,23 +316,21 @@ module.exports = async function handler(req, res) {
     const idempotencyKey = crypto.randomUUID();
     const orderUrl       = `${base}/v2/checkout/orders`;
 
+    const s = rooms.find(r => r.type === 'single')?.qty ?? 0;
+    const d = rooms.find(r => r.type === 'double')?.qty ?? 0;
+    const t = rooms.find(r => r.type === 'triple')?.qty ?? 0;
+    const customId = JSON.stringify({ s, d, t, ci: checkIn, co: checkOut, g: String(guests), m: String(totalMAD) });
+
     const orderPayload = {
       intent: 'CAPTURE',
       purchase_units: [
         {
-          description: `Tiznit Hotel — ${ROOM_CATALOG[room].name} — ${nights} nuit(s) — ${checkIn} au ${checkOut}`,
+          description: `Tiznit Hotel — ${roomLabel} — ${guests} pers. — ${nights} nuit(s)`,
           amount: {
             currency_code: 'EUR',
-            value:         totalEUR,   // server sets the amount — never the browser
+            value:         totalEUR,
           },
-          // Stash booking params so verify-payment can cross-check them
-          custom_id: JSON.stringify({
-            room,
-            checkIn,
-            checkOut,
-            guests:   String(guests),
-            totalMAD: String(totalMAD),
-          }),
+          custom_id: customId,
         },
       ],
       application_context: {
