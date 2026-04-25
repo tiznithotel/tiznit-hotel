@@ -38,7 +38,7 @@ nav.s .nv a{color:var(--m)}
 .hbg{position:absolute;inset:0;background-size:cover;background-position:center 30%;animation:hz 10s ease forwards}
 @keyframes hz{from{transform:scale(1.06)}to{transform:scale(1)}}
 .hov{position:absolute;inset:0;background:linear-gradient(105deg,rgba(12,8,4,.92) 0%,rgba(12,8,4,.80) 28%,rgba(12,8,4,.42) 54%,rgba(12,8,4,.10) 78%,rgba(12,8,4,.03) 100%)}
-.hc{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 10vw;z-index:2}
+.hc{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:72px 10vw 0;z-index:2}
 .htag{font-size:11px;letter-spacing:7px;text-transform:uppercase;color:var(--g);margin-bottom:20px;display:flex;align-items:center;gap:14px}
 .htag::before{content:'';width:40px;height:1px;background:var(--g)}
 .ht{font-family:'Cormorant Garamond',serif;font-size:clamp(56px,9vw,120px);font-weight:200;letter-spacing:-.5px;color:#faf7f2;line-height:1.0;margin-bottom:28px}
@@ -896,8 +896,8 @@ nav.s .ham span{background:var(--dark)}
         <label class="fl3">Commentaire (optionnel)</label>
         <textarea class="fi" id="com" rows="3" placeholder="Demande spéciale, heure d'arrivée, lit bébé..."></textarea>
       </div>
-      <button class="bg" id="next-btn" onclick="nextStep()" style="width:100%;margin-top:18px;justify-content:center" disabled>Continuer →</button>
-      <p id="s1-hint" style="font-size:11px;text-align:center;color:var(--lm);margin-top:8px">Sélectionnez vos dates et au moins une chambre</p>
+      <div id="modal-err" style="display:none;margin-top:14px;padding:11px 14px;background:#fff2f0;border-left:3px solid #c0392b;font-size:13px;color:#c0392b;line-height:1.5;border-radius:0 2px 2px 0"></div>
+      <button class="bg" id="next-btn" onclick="nextStep()" style="width:100%;margin-top:12px;justify-content:center" disabled>Continuer →</button>
     </div>
 
     <!-- ÉTAPE 2 -->
@@ -1063,14 +1063,23 @@ function updateNextBtn(){
   var totalRooms=c.single+c.double+c.triple,cap=1*c.single+2*c.double+3*c.triple;
   var datesOk=ci&&co&&ci<co,capOk=cap>=n&&totalRooms>0;
   var warn=document.getElementById('cap-warn');
+  var err=document.getElementById('modal-err');
   if(totalRooms>0&&cap<n){
     warn.textContent='Capacité insuffisante ('+cap+' pers. disponibles pour '+n+' personnes). Ajoutez une chambre.';
     warn.style.display='block';
   } else {
     warn.style.display='none';
   }
+  var msg='';
+  if(!ci||!co||ci>=co){
+    msg='Veuillez sélectionner des dates d\'arrivée et de départ valides.';
+  } else if(totalRooms===0){
+    msg='Ajoutez au moins une chambre pour continuer.';
+  } else if(cap<n){
+    msg='Capacité insuffisante — ajoutez une chambre ou réduisez le nombre de personnes.';
+  }
+  if(err){err.textContent=msg;err.style.display=msg?'block':'none';}
   document.getElementById('next-btn').disabled=!(datesOk&&capOk);
-  document.getElementById('s1-hint').style.display=(datesOk&&capOk)?'none':'block';
 }
 
 // BOOKING BAR → MODAL
