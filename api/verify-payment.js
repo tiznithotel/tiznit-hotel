@@ -24,7 +24,7 @@ const crypto = require('crypto');
 
 // ─── PayPal environment selection ─────────────────────────────────────────────
 const IS_SANDBOX   = (process.env.PAYPAL_ENV || 'live').toLowerCase() === 'sandbox';
-const IS_TEST_MODE = (process.env.TEST_PAYMENT_MODE || '').toLowerCase() === 'true';
+const IS_TEST_MODE = (process.env.TEST_PAYMENT_MODE || '').trim().toLowerCase() === 'true';
 
 const PAYPAL_CLIENT_ID = IS_SANDBOX
   ? (process.env.PAYPAL_SANDBOX_CLIENT_ID || '')
@@ -57,7 +57,7 @@ function computeTotalMAD(rooms, checkIn, checkOut, guests) {
   const g      = parseInt(guests, 10);
   const roomCost = rooms.reduce((s, r) => s + ROOM_CATALOG[r.type].priceMAD * r.qty * nights, 0);
   let   total    = roomCost + BREAKFAST * g * nights + TAX * g * nights;
-  if (nights > 5) total = Math.round(total * 0.8);
+  if (nights >= 5) total = Math.round(total * 0.8);
   return total;
 }
 
@@ -340,8 +340,6 @@ function setCorsHeaders(res, origin) {
   const isAllowed =
     origin === ALLOWED_ORIGIN ||
     origin === 'https://www.' + ALLOWED_ORIGIN.replace('https://', '') ||
-    /^https:\/\/[a-z0-9-]+-[a-z0-9]+-[a-z0-9]+\.vercel\.app$/.test(origin) ||
-    /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin) ||
     /^http:\/\/localhost(:\d+)?$/.test(origin);
 
   res.setHeader('Access-Control-Allow-Origin',  isAllowed ? origin : ALLOWED_ORIGIN);

@@ -685,7 +685,7 @@ nav.s .ham span{background:var(--dark)}
     <div class="pc hot rv d2"><span class="pcl">La plus demandée</span><div class="pcn">Double</div><div class="pca"><span class="pcc">DHS </span>310</div><div class="pcu">par nuit · 2 personnes</div><ul class="pcf"><li>Grand lit ou 2 lits séparés</li><li>Salle de bain privée</li><li>Climatisation</li><li>TV satellite · WiFi</li><li>Petit déjeuner du chef</li></ul></div>
     <div class="pc rv d3"><span class="pcl">En famille</span><div class="pcn">Triple</div><div class="pca"><span class="pcc">DHS </span>438</div><div class="pcu">par nuit · 3 personnes</div><ul class="pcf"><li>3 lits individuels</li><li>Salle de bain privée</li><li>Climatisation</li><li>TV satellite · WiFi</li><li>Petit déjeuner du chef</li></ul></div>
   </div>
-  <div class="pnote rv"><p><strong>Taxe de séjour :</strong> 10 DHS/pers./nuit &nbsp;·&nbsp; <strong>−20%</strong> pour séjour &gt; 5 nuits &nbsp;·&nbsp; Paiement à l'arrivée ou en ligne via PayPal</p></div>
+  <div class="pnote rv"><p><strong>Taxe de séjour :</strong> 10 DHS/pers./nuit &nbsp;·&nbsp; <strong>−20%</strong> dès 5 nuits &nbsp;·&nbsp; Paiement à l'arrivée ou en ligne sécurisé</p></div>
 </section>
 
 <!-- GALERIE -->
@@ -748,8 +748,7 @@ nav.s .ham span{background:var(--dark)}
         <span class="tg-count">42 avis</span>
       </div>
     </div>
-    <a href="#" class="tg-link" target="_blank" rel="noopener noreferrer">
-      <!-- TODO: remplacer par le lien Google Maps réel -->
+    <a href="https://maps.app.goo.gl/EGwhrndYYanHhvh86?g_st=ic" class="tg-link" target="_blank" rel="noopener noreferrer">
       Voir sur Google →
     </a>
   </div>
@@ -818,7 +817,7 @@ nav.s .ham span{background:var(--dark)}
     <span class="ey">Réservation directe</span>
     <h2 class="st" style="color:#faf7f2;margin-bottom:14px">Réservez en <em style="color:var(--gl)">2 minutes</em></h2>
     <div class="dv"></div>
-    <p class="ctasub">PayPal ou WhatsApp. Confirmation immédiate. Justificatif PDF fourni.</p>
+    <p class="ctasub">Paiement sécurisé en ligne ou via WhatsApp. Confirmation immédiate. Justificatif PDF fourni.</p>
     <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:8px">
       <a href="#" class="bg" onclick="openModal();return false">Réserver maintenant</a>
       <a href="https://wa.me/212645789351" target="_blank" class="bo">+212 645 789 351</a>
@@ -1148,7 +1147,7 @@ function cp(){
   if(n<1||c.single+c.double+c.triple<1){pb.style.display='none';return}
   var roomCost=247*c.single*n+310*c.double*n+438*c.triple*n;
   var bkf=36*g*n,tax=10*g*n,tot=roomCost+bkf+tax,disc=0;
-  if(n>5){disc=Math.round(tot*.2);tot=Math.round(tot*.8);}
+  if(n>=5){disc=Math.round(tot*.2);tot=Math.round(tot*.8);}
   var html='';
   if(c.single) html+='<div class="pr2"><span>Single \u00d7 '+n+' nuit'+(n>1?'s':'')+'</span><span>'+247*c.single*n+' DHS</span></div>';
   if(c.double) html+='<div class="pr2"><span>Double \u00d7 '+n+' nuit'+(n>1?'s':'')+'</span><span>'+310*c.double*n+' DHS</span></div>';

@@ -125,7 +125,7 @@ function calculatePrice(rooms, checkIn, checkOut, guests) {
   const tax       = TAX_PER_PERSON_PER_NIGHT * g * nights;
   let   totalMAD  = roomCost + breakfast + tax;
 
-  if (nights > DISCOUNT_THRESHOLD_NIGHTS) {
+  if (nights >= DISCOUNT_THRESHOLD_NIGHTS) {
     totalMAD = Math.round(totalMAD * (1 - DISCOUNT_RATE));
   }
 
@@ -243,8 +243,6 @@ function setCorsHeaders(res, origin) {
   const isAllowed =
     origin === ALLOWED_ORIGIN ||
     origin === 'https://www.' + ALLOWED_ORIGIN.replace('https://', '') ||
-    /^https:\/\/[a-z0-9-]+-[a-z0-9]+-[a-z0-9]+\.vercel\.app$/.test(origin) ||
-    /^https:\/\/[a-z0-9-]+\.vercel\.app$/.test(origin) ||
     /^http:\/\/localhost(:\d+)?$/.test(origin);
 
   res.setHeader('Access-Control-Allow-Origin',  isAllowed ? origin : ALLOWED_ORIGIN);
@@ -346,7 +344,7 @@ module.exports = async function handler(req, res) {
       ],
       application_context: {
         brand_name:          'Tiznit Hotel',
-        landing_page:        'NO_PREFERENCE',
+        landing_page:        'BILLING',
         user_action:         'PAY_NOW',
         shipping_preference: 'NO_SHIPPING',
       },
@@ -354,8 +352,7 @@ module.exports = async function handler(req, res) {
 
     console.log(
       `[create-payment] PayPal order request -> ${orderUrl} | ` +
-      `idempotency_key=${idempotencyKey} | ` +
-      `payload=${JSON.stringify(orderPayload)}`
+      `idempotency_key=${idempotencyKey}`
     );
 
     const orderRes = await fetch(orderUrl, {

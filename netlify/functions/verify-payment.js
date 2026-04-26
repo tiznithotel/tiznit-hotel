@@ -121,7 +121,7 @@ function computeExpectedEUR(rooms, checkIn, checkOut, guests) {
   const g        = parseInt(guests, 10);
   const roomCost = rooms.reduce((s, r) => s + ROOM_CATALOG[r.type].priceMAD * r.qty * nights, 0);
   let   total    = roomCost + BREAKFAST * g * nights + TAX * g * nights;
-  if (nights > 5) total = Math.round(total * 0.8);
+  if (nights >= 5) total = Math.round(total * 0.8);
   return parseFloat((total * MAD_TO_EUR).toFixed(2));
 }
 
@@ -130,7 +130,7 @@ function computeTotalMAD(rooms, checkIn, checkOut, guests) {
   const g        = parseInt(guests, 10);
   const roomCost = rooms.reduce((s, r) => s + ROOM_CATALOG[r.type].priceMAD * r.qty * nights, 0);
   let   total    = roomCost + BREAKFAST * g * nights + TAX * g * nights;
-  if (nights > 5) total = Math.round(total * 0.8);
+  if (nights >= 5) total = Math.round(total * 0.8);
   return total;
 }
 

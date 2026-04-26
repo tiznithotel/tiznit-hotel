@@ -127,7 +127,7 @@ function calculatePrice(rooms, checkIn, checkOut, guests) {
   const tax       = TAX_PER_PERSON_PER_NIGHT * g * nights;
   let   totalMAD  = roomCost + breakfast + tax;
 
-  if (nights > DISCOUNT_THRESHOLD_NIGHTS) {
+  if (nights >= DISCOUNT_THRESHOLD_NIGHTS) {
     totalMAD = Math.round(totalMAD * (1 - DISCOUNT_RATE));
   }
 
@@ -313,7 +313,7 @@ exports.handler = async (event) => {
       }],
       application_context: {
         brand_name:          'Tiznit Hotel',
-        landing_page:        'NO_PREFERENCE',
+        landing_page:        'BILLING',
         user_action:         'PAY_NOW',
         shipping_preference: 'NO_SHIPPING',
       },
@@ -321,8 +321,7 @@ exports.handler = async (event) => {
 
     console.log(
       `[create-payment] PayPal order request → ${orderUrl} | ` +
-      `idempotency_key=${idempotencyKey} | custom_id_len=${customId.length} | ` +
-      `payload=${JSON.stringify(orderPayload)}`
+      `idempotency_key=${idempotencyKey} | custom_id_len=${customId.length}`
     );
 
     const orderRes = await fetch(orderUrl, {
