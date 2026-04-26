@@ -920,7 +920,10 @@ nav.s .ham span{background:var(--dark)}
         <span style="font-size:10px;color:var(--lm);letter-spacing:1px">OU PAYER EN LIGNE</span>
         <div style="flex:1;height:1px;background:var(--bdr)"></div>
       </div>
-      <div id="paypal-button-container" style="min-height:50px;display:none"></div>
+      <div id="pp-wrap" style="position:relative;min-height:50px;display:none">
+        <div id="pp-custom-btn" style="position:absolute;inset:0;z-index:1;background:linear-gradient(150deg,#1f1b13 0%,#26201a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 10px rgba(0,0,0,.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border-radius:7px;pointer-events:none"></div>
+        <div id="paypal-button-container" style="position:relative;z-index:2;opacity:0;min-height:50px"></div>
+      </div>
       <div id="paypal-success" style="display:none;background:#f0faf4;border:1px solid #2ecc71;padding:14px 16px;margin-top:10px;text-align:center">
         <span style="font-size:18px">✅</span>
         <p style="font-size:14px;color:#1a7a40;font-weight:500;margin-top:4px">Paiement confirmé ! Redirection...</p>
@@ -1114,7 +1117,7 @@ function openModal(t){
   document.getElementById('ms1').style.display='block';
   document.getElementById('ms2').style.display='none';
   document.getElementById('paypal-success').style.display='none';
-  document.getElementById('paypal-button-container').style.display='none';
+  document.getElementById('pp-wrap').style.display='none';
   document.getElementById('pp-sep').style.display='none';
   document.getElementById('pp-note').style.display='none';
   var td=new Date().toISOString().split('T')[0];
@@ -1170,12 +1173,12 @@ function nextStep(){
   var hasRooms=c.single+c.double+c.triple>0;
   if(hasRooms&&ci&&co&&ci<co){
     document.getElementById('pp-sep').style.display='flex';
-    document.getElementById('paypal-button-container').style.display='block';
+    document.getElementById('pp-wrap').style.display='block';
     document.getElementById('pp-note').style.display='block';
     renderPayPal();
   } else {
     document.getElementById('pp-sep').style.display='none';
-    document.getElementById('paypal-button-container').style.display='none';
+    document.getElementById('pp-wrap').style.display='none';
     document.getElementById('pp-note').style.display='none';
   }
 }
@@ -1189,8 +1192,7 @@ function prevStep(){
 // onApprove    → calls /verify-payment (server verifies capture with PayPal API)
 // Booking data → stored in sessionStorage, NOT in URL params
 let ppRendered=false;
-var ppOverlay=null;
-function ppOverlayHTML(){
+function ppBtnHTML(){
   return '<div style="display:flex;align-items:center;justify-content:center;gap:7px">'
     +'<svg width="11" height="14" viewBox="0 0 11 14" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">'
     +'<rect x=".5" y="5.5" width="10" height="8" rx="1.5" stroke="rgba(255,255,255,.82)" stroke-width="1" fill="rgba(255,255,255,.1)"/>'
@@ -1212,6 +1214,9 @@ function renderPayPal(){
   if(_c.single+_c.double+_c.triple<1) return;
   // Test mode: show fake button, bypass PayPal entirely
   if(typeof PAYMENT_TEST_MODE!=='undefined'&&PAYMENT_TEST_MODE===true){
+    var ppBtn0=document.getElementById('pp-custom-btn');
+    if(ppBtn0) ppBtn0.style.display='none';
+    container.style.opacity='1';
     container.innerHTML='<div style="background:#fff3cd;border:2px solid #ffc107;border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#856404;font-weight:700;text-align:center;">⚠️ MODE TEST — aucun paiement réel</div><button onclick="simulateTestPayment()" style="width:100%;padding:14px;background:#ffc107;color:#212529;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.3px;">🧪 Simuler un paiement (TEST)</button>';
     ppRendered=true;
     return;
@@ -1226,11 +1231,18 @@ function renderPayPal(){
   container.innerHTML='';
   ppRendered=false;
   if(typeof paypal==='undefined') return;
+  var ppBtn=document.getElementById('pp-custom-btn');
+  if(ppBtn) ppBtn.innerHTML=ppBtnHTML();
+  if(!document.getElementById('pp-spin-style')){
+    var s=document.createElement('style');s.id='pp-spin-style';
+    s.textContent='@keyframes ppSpin{to{transform:rotate(360deg)}}.pp-spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.15);border-top-color:rgba(255,255,255,.88);border-radius:50%;animation:ppSpin .7s linear infinite}';
+    document.head.appendChild(s);
+  }
   paypal.Buttons({
     style:{layout:'vertical',color:'gold',shape:'rect',label:'pay',height:50},
     // Step 1 — server creates PayPal order with server-calculated price
     createOrder:function(){
-      if(ppOverlay) ppOverlay.innerHTML='<div class="pp-spin"></div><span style="color:rgba(255,255,255,.55);font-size:11px;letter-spacing:.3px;margin-top:6px;font-family:\'Jost\',sans-serif">Connexion s&eacute;curis&eacute;e&hellip;</span>';
+      if(ppBtn) ppBtn.innerHTML='<div class="pp-spin"></div><span style="color:rgba(255,255,255,.55);font-size:11px;letter-spacing:.3px;margin-top:6px;font-family:\'Jost\',sans-serif">Connexion s&eacute;curis&eacute;e&hellip;</span>';
       return fetch('/api/create-payment',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
@@ -1259,7 +1271,7 @@ function renderPayPal(){
         var name=(document.getElementById('cN').value||'').trim()||'Client';
         var email=(document.getElementById('cE').value||'').trim();
         var comment=(document.getElementById('com')||{value:''}).value||'';
-        document.getElementById('paypal-button-container').style.display='none';
+        document.getElementById('pp-wrap').style.display='none';
         document.getElementById('paypal-success').style.display='block';
         return fetch('/api/verify-payment',{
           method:'POST',
@@ -1284,26 +1296,12 @@ function renderPayPal(){
     },
     onError:function(err){
       console.error('PayPal error:',err);
-      if(ppOverlay) ppOverlay.innerHTML=ppOverlayHTML();
-      document.getElementById('paypal-button-container').style.display='block';
+      if(ppBtn) ppBtn.innerHTML=ppBtnHTML();
+      document.getElementById('pp-wrap').style.display='block';
       document.getElementById('paypal-success').style.display='none';
       alert('Erreur PayPal. Veuillez réessayer ou nous contacter via WhatsApp.');
     }
-  }).render('#paypal-button-container').then(function(){
-    container.style.position='relative';
-    container.style.minHeight='50px';
-    if(!document.getElementById('pp-spin-style')){
-      var s=document.createElement('style');s.id='pp-spin-style';
-      s.textContent='@keyframes ppSpin{to{transform:rotate(360deg)}}.pp-spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.15);border-top-color:rgba(255,255,255,.88);border-radius:50%;animation:ppSpin .7s linear infinite}';
-      document.head.appendChild(s);
-    }
-    var ov=document.createElement('div');
-    ov.id='pp-custom-overlay';
-    ov.style.cssText='position:absolute;inset:0;z-index:10;pointer-events:none;border-radius:7px;background:linear-gradient(150deg,#1f1b13 0%,#26201a 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 10px rgba(0,0,0,.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer';
-    ov.innerHTML=ppOverlayHTML();
-    container.appendChild(ov);
-    ppOverlay=ov;
-  });
+  }).render('#paypal-button-container');
   ppRendered=true;
 }
 
@@ -1322,7 +1320,7 @@ function simulateTestPayment(){
     {type:'triple',qty:_c.triple}
   ].filter(function(r){return r.qty>0;});
   var testOrderId='TEST-'+Date.now().toString(36).toUpperCase();
-  document.getElementById('paypal-button-container').style.display='none';
+  document.getElementById('pp-wrap').style.display='none';
   document.getElementById('paypal-success').style.display='block';
   fetch('/api/verify-payment',{
     method:'POST',
@@ -1340,7 +1338,7 @@ function simulateTestPayment(){
     setTimeout(function(){window.location.href='/merci.html';},1200);
   })
   .catch(function(err){
-    document.getElementById('paypal-button-container').style.display='block';
+    document.getElementById('pp-wrap').style.display='block';
     document.getElementById('paypal-success').style.display='none';
     alert('Erreur test: '+err.message);
   });
